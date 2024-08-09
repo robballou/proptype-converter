@@ -1,0 +1,21 @@
+{
+	"name": "proptype-converter",
+	"version": "1.0.0",
+	"bin": "build/cli.js",
+	"main": "build/main.js",
+	"scripts": {
+		"build": "tsc",
+		"test": "vitest run",
+		"prettier:fix": "prettier --write ."
+	},
+	"author": "",
+	"license": "ISC",
+	"description": "",
+	"devDependencies": {
+		"@swc-node/register": "^1.10.9",
+		"@types/node": "^22.1.0",
+		"prettier": "^3.3.3",
+		"typescript": "^5.5.4",
+		"vitest": "^2.0.5"
+	}
+}
