@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { processFile } from './main';
+import { createTypes, processFile } from './main';
 import path from 'path';
 
 test('fixture 001: basic', async () => {
@@ -67,17 +67,47 @@ test('fixture 004: oneOf', async () => {
 	expect(component.notMappedProperties.size).toEqual(0);
 
 	const custom = component.mappedProperties.get('custom')!;
-	expect(custom.tsType).toEqual(`'test' | 'thing';`);
+	expect(custom.tsType).toEqual(`'test' | 'thing'`);
 	expect(custom.required).toBe(false);
 
 	const requiredThing = component.mappedProperties.get('requiredThing')!;
-	expect(requiredThing.tsType).toEqual(`0 | 1 | 2 | 3 | 4 | 5;`);
+	expect(requiredThing.tsType).toEqual(`0 | 1 | 2 | 3 | 4 | 5`);
 	expect(requiredThing.required).toBe(true);
 });
 
 test('fixture 005: shape', async () => {
 	const result = await processFile(
 		path.resolve(__dirname, './fixtures/fixture005.js'),
+	);
+	expect(result).not.toBe(null);
+	expect(result!.has('MyComponent')).toBe(true);
+
+	const component = result!.get('MyComponent')!;
+	expect(component.mappedProperties.size).toEqual(1);
+	expect(component.notMappedProperties.size).toEqual(0);
+
+	const someObject = component.mappedProperties.get('someObject')!;
+	expect(someObject.tsType).toContain('key');
+	expect(someObject.required).toBe(false);
+});
+
+test('fixture 005: nested types', async () => {
+	const result = await processFile(
+		path.resolve(__dirname, './fixtures/fixture005.js'),
+	);
+	const types = createTypes(result);
+	expect(types.length).toBe(1);
+	const lines = types[0].split('\n');
+	expect(lines[0]).toBe('type MyComponentProps = {');
+	expect(lines[1]).toBe('\tsomeObject?: {');
+	expect(lines[2]).toBe('\t\tkey?: string;');
+	expect(lines[3]).toBe('\t};');
+	expect(lines[lines.length - 1]).toBe('}');
+});
+
+test.only('fixture 006: shape array', async () => {
+	const result = await processFile(
+		path.resolve(__dirname, './fixtures/fixture006.js'),
 	);
 	expect(result).not.toBe(null);
 	expect(result!.has('MyComponent')).toBe(true);
