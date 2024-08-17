@@ -27,7 +27,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.processFile = processFile;
-exports.indent = indent;
+exports.processSourceFile = processSourceFile;
 exports.createTypes = createTypes;
 // import * as fs from 'fs/promises';
 const fs_1 = require("fs");
@@ -47,6 +47,10 @@ async function processFile(fileName) {
         console.error('No sourceFile');
         return null;
     }
+    return await processSourceFile(sourceFile);
+}
+async function processSourceFile(sourceFile) {
+    const d = baseDebugger.extend('processSourceFile');
     const components = new Map();
     ts.forEachChild(sourceFile, (node) => {
         // find [Component].propTypes
@@ -94,6 +98,9 @@ async function processFile(fileName) {
     });
     return components;
 }
+/**
+ * Try to get details of what kind of PropType this property represents.
+ */
 function getPropertyDetails(property) {
     const d = baseDebugger.extend('getPropertyDetails');
     const simpleResult = getSimplePropertyDetails(property);
@@ -112,6 +119,9 @@ function getPropertyDetails(property) {
         propertyText: property.getText(),
     };
 }
+/**
+ * Convert a `oneOf` PropType to its correlated Type.
+ */
 function createOneOfType(args, required = false) {
     const d = baseDebugger.extend('createOneOfType');
     if (!args) {
@@ -134,6 +144,9 @@ function createOneOfType(args, required = false) {
         propertyText: '',
     };
 }
+/**
+ * Convert a `shape` PropType to its correlated Type.
+ */
 function createShapeType(args, required = false) {
     if (!args) {
         return {
@@ -148,6 +161,11 @@ function createShapeType(args, required = false) {
         required,
     };
 }
+/**
+ * Return details about an object literal PropType.
+ *
+ * Often matches `shape` PropTypes.
+ */
 function getObjectLiteralDetails(node) {
     return node.properties.map((argProperty) => {
         const propertyName = argProperty.name?.getText();
@@ -320,9 +338,6 @@ function mapPropTypeTypeToTSType(propTypeType) {
         default:
             return null;
     }
-}
-function indent(text, indentLevel = 0) {
-    return `\n`.repeat(indentLevel) + text;
 }
 function createTypes(components) {
     return Array.from(components ?? []).map(([name, component]) => {

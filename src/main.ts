@@ -10,13 +10,9 @@ const simplePropType =
 /**
  * Parse a TS/JS file for PropTypes
  */
-export async function processFile(fileName: string): Promise<Map<
-	string,
-	{
-		mappedProperties: Map<string, { tsType: string; required: boolean }>;
-		notMappedProperties: Map<string, string>;
-	}
-> | null> {
+export async function processFile(
+	fileName: string,
+): Promise<Awaited<ReturnType<typeof processSourceFile>> | null> {
 	const d = baseDebugger.extend('processFile');
 
 	d('reading file');
@@ -33,6 +29,19 @@ export async function processFile(fileName: string): Promise<Map<
 		return null;
 	}
 
+	return await processSourceFile(sourceFile);
+}
+
+export async function processSourceFile(sourceFile: ts.SourceFile): Promise<
+	Map<
+		string,
+		{
+			mappedProperties: Map<string, { tsType: string; required: boolean }>;
+			notMappedProperties: Map<string, string>;
+		}
+	>
+> {
+	const d = baseDebugger.extend('processSourceFile');
 	const components = new Map();
 
 	ts.forEachChild(sourceFile, (node) => {
@@ -93,6 +102,9 @@ type PropertyDetailsResult =
 	  }
 	| { status: 'notMatched'; propertyText: string };
 
+/**
+ * Try to get details of what kind of PropType this property represents.
+ */
 function getPropertyDetails(
 	property: ts.PropertyAssignment,
 ): PropertyDetailsResult {
@@ -117,6 +129,9 @@ function getPropertyDetails(
 	};
 }
 
+/**
+ * Convert a `oneOf` PropType to its correlated Type.
+ */
 function createOneOfType(
 	args: ReturnType<typeof getCallExpressionArgs>,
 	required = false,
@@ -145,6 +160,9 @@ function createOneOfType(
 	};
 }
 
+/**
+ * Convert a `shape` PropType to its correlated Type.
+ */
 function createShapeType(
 	args: ReturnType<typeof getCallExpressionArgs>,
 	required = false,
@@ -164,6 +182,11 @@ function createShapeType(
 	};
 }
 
+/**
+ * Return details about an object literal PropType.
+ *
+ * Often matches `shape` PropTypes.
+ */
 function getObjectLiteralDetails(
 	node: ts.ObjectLiteralExpression,
 ): (string | null)[] {
@@ -362,10 +385,6 @@ function mapPropTypeTypeToTSType(propTypeType: string) {
 		default:
 			return null;
 	}
-}
-
-export function indent(text: string, indentLevel = 0) {
-	return `\n`.repeat(indentLevel) + text;
 }
 
 export function createTypes(
