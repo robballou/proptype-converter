@@ -36,7 +36,7 @@ async function main(args) {
     if (failedFiles.length > 0) {
         status = 1;
         failedFiles.forEach((fileResult) => {
-            console.error(fileResult);
+            console.error(fileResult.reason);
         });
     }
     fulfilledFiles.forEach((fileResults) => {
