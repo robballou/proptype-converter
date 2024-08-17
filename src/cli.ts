@@ -1,4 +1,4 @@
-import { parseArgs } from 'util';
+import { parseArgs } from 'node:util';
 import { createTypes, processFile } from './main';
 
 function isFulfilled<T>(
@@ -7,8 +7,12 @@ function isFulfilled<T>(
 	return p.status === 'fulfilled';
 }
 
+function isRejected<T>(p: PromiseSettledResult<T>): p is PromiseRejectedResult {
+	return p.status === 'rejected';
+}
+
 async function main(args: string[]) {
-	const { values, positionals } = parseArgs({
+	const { values, positionals: positionalArguments } = parseArgs({
 		args,
 		options: {
 			help: {
@@ -19,13 +23,13 @@ async function main(args: string[]) {
 		allowPositionals: true,
 	});
 
-	if (values.help || positionals.length === 0) {
+	if (values.help || positionalArguments.length === 0) {
 		usage();
 		return;
 	}
 
 	const promises: Promise<Awaited<ReturnType<typeof processFile>>>[] = [];
-	positionals.forEach((fileName) => {
+	positionalArguments.forEach((fileName) => {
 		promises.push(processFile(fileName));
 	});
 
@@ -34,9 +38,21 @@ async function main(args: string[]) {
 		.filter(isFulfilled)
 		.map((result) => result.value);
 
+	let status = 0;
+
+	const failedFiles = results.filter(isRejected);
+	if (failedFiles.length > 0) {
+		status = 1;
+		failedFiles.forEach((fileResult) => {
+			console.error(fileResult.reason);
+		});
+	}
+
 	fulfilledFiles.forEach((fileResults) => {
 		createTypes(fileResults).forEach((typeResult) => console.log(typeResult));
 	});
+
+	process.exit(status);
 }
 
 function usage() {
