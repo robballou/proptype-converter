@@ -6,7 +6,9 @@ function MyComponent({ className }) {
 }
 
 MyComponent.propTypes = {
-	someObject: PropTypes.arrayOf(PropTypes.shape({
-		key: PropTypes.string,
-	})),
+	someObject: PropTypes.arrayOf(
+		PropTypes.shape({
+			key: PropTypes.string,
+		}),
+	),
 };

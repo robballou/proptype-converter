@@ -51,3 +51,19 @@ type MyComponentProps = {
 	custom: unknown; // Could not process this property
 }
 ```
+
+## Developing
+
+```Shell
+# build changes
+npm run build
+
+# run tests
+npm run test
+
+# run prettier (without making changes)
+npm run prettier
+
+# run prettier (with changes)
+npm run prettier:fix
+```

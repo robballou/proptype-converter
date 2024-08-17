@@ -5,7 +5,11 @@
 	"main": "build/main.js",
 	"scripts": {
 		"build": "tsc",
-		"test": "vitest run",
+		"tsc": "tsc --noEmit",
+		"tsc:watch": "tsc --watch --noEmit",
+		"test": "npm run prettier && vitest run",
+		"test:watch": "vitest",
+		"prettier": "prettier --list-different .",
 		"prettier:fix": "prettier --write .",
 		"preversion": "npm run build"
 	},

@@ -4,7 +4,7 @@
 		"target": "es2022" /* Set the JavaScript language version for emitted JavaScript and include compatible library declarations. */,
 		"lib": [] /* Specify a set of bundled library declaration files that describe the target runtime environment. */,
 		/* Modules */
-		"module": "NodeNext", /* Specify what module code is generated. */
+		"module": "NodeNext" /* Specify what module code is generated. */,
 		"moduleResolution": "NodeNext",
 		/* Type Checking */
 		"strict": true /* Enable all strict type-checking options. */,
@@ -13,10 +13,6 @@
 		"noUnusedLocals": true,
 		"outDir": "build"
 	},
-	"include": [
-		"src"
-	],
-	"exclude": [
-		"src/**/*.test.ts"
-	]
+	"include": ["src"],
+	"exclude": ["src/**/*.test.ts"]
 }
