@@ -15,7 +15,7 @@ npm clean-install
 node build/cli.js [path/to/file] [...]
 ```
 
-This will output the type to `stdout`.
+The resulting TypeScript type will be outputted to `stdout`.
 
 ## Example
 
