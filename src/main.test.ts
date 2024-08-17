@@ -16,6 +16,8 @@ test('fixture 001: basic', async () => {
 	const className = component.mappedProperties.get('className')!;
 	expect(className.tsType).toEqual('string');
 	expect(className.required).toBe(true);
+
+	expect(createTypes(result)).toMatchSnapshot();
 });
 
 test('fixture 002: simple PropTypes only', async () => {
@@ -40,6 +42,8 @@ test('fixture 002: simple PropTypes only', async () => {
 	const children = component.mappedProperties.get('children')!;
 	expect(children.tsType).toEqual('React.ReactNode');
 	expect(children.required).toBe(false);
+
+	expect(createTypes(result)).toMatchSnapshot();
 });
 
 test('fixture 003: a PropType we cannot map', async () => {
@@ -53,6 +57,8 @@ test('fixture 003: a PropType we cannot map', async () => {
 	expect(component.mappedProperties.size).toEqual(0);
 	expect(component.notMappedProperties.size).toEqual(1);
 	expect(component.notMappedProperties.has('custom')).toBe(true);
+
+	expect(createTypes(result)).toMatchSnapshot();
 });
 
 test('fixture 004: oneOf', async () => {
@@ -73,6 +79,8 @@ test('fixture 004: oneOf', async () => {
 	const requiredThing = component.mappedProperties.get('requiredThing')!;
 	expect(requiredThing.tsType).toEqual(`0 | 1 | 2 | 3 | 4 | 5`);
 	expect(requiredThing.required).toBe(true);
+
+	expect(createTypes(result)).toMatchSnapshot();
 });
 
 test('fixture 005: shape', async () => {
@@ -83,29 +91,21 @@ test('fixture 005: shape', async () => {
 	expect(result!.has('MyComponent')).toBe(true);
 
 	const component = result!.get('MyComponent')!;
-	expect(component.mappedProperties.size).toEqual(1);
+	expect(component.mappedProperties.size).toEqual(2);
 	expect(component.notMappedProperties.size).toEqual(0);
 
 	const someObject = component.mappedProperties.get('someObject')!;
 	expect(someObject.tsType).toContain('key');
 	expect(someObject.required).toBe(false);
+
+	const requiredProp = component.mappedProperties.get('requiredProp')!;
+	expect(requiredProp.tsType).toContain('key');
+	expect(requiredProp.required).toBe(true);
+
+	expect(createTypes(result)).toMatchSnapshot();
 });
 
-test('fixture 005: nested types', async () => {
-	const result = await processFile(
-		path.resolve(__dirname, './fixtures/fixture005.js'),
-	);
-	const types = createTypes(result);
-	expect(types.length).toBe(1);
-	const lines = types[0].split('\n');
-	expect(lines[0]).toBe('type MyComponentProps = {');
-	expect(lines[1]).toBe('\tsomeObject?: {');
-	expect(lines[2]).toBe('\t\tkey?: string;');
-	expect(lines[3]).toBe('\t};');
-	expect(lines[lines.length - 1]).toBe('}');
-});
-
-test.only('fixture 006: shape array', async () => {
+test('fixture 006: shape array', async () => {
 	const result = await processFile(
 		path.resolve(__dirname, './fixtures/fixture006.js'),
 	);
@@ -119,4 +119,6 @@ test.only('fixture 006: shape array', async () => {
 	const someObject = component.mappedProperties.get('someObject')!;
 	expect(someObject.tsType).toContain('key');
 	expect(someObject.required).toBe(false);
+
+	expect(createTypes(result)).toMatchSnapshot();
 });

@@ -29,7 +29,7 @@ async function main(args) {
         .filter(isFulfilled)
         .map((result) => result.value);
     fulfilledFiles.forEach((fileResults) => {
-        (0, main_1.createTypes)(fileResults);
+        (0, main_1.createTypes)(fileResults).forEach((typeResult) => console.log(typeResult));
     });
 }
 function usage() {

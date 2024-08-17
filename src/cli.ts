@@ -35,7 +35,7 @@ async function main(args: string[]) {
 		.map((result) => result.value);
 
 	fulfilledFiles.forEach((fileResults) => {
-		console.log(createTypes(fileResults));
+		createTypes(fileResults).forEach((typeResult) => console.log(typeResult));
 	});
 }
 

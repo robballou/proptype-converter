@@ -6,14 +6,17 @@
 	"scripts": {
 		"build": "tsc",
 		"test": "vitest run",
-		"prettier:fix": "prettier --write ."
+		"prettier:fix": "prettier --write .",
+		"preversion": "npm run build"
 	},
-	"author": "",
-	"license": "ISC",
-	"description": "",
+	"author": "Rob Ballou (https://robballou.com)",
+	"license": "MIT",
+	"description": "A rudimentary PropType-to-TypeScript-Type-Converter",
 	"devDependencies": {
 		"@swc-node/register": "^1.10.9",
+		"@types/debug": "^4.1.12",
 		"@types/node": "^22.1.0",
+		"debug": "^4.3.6",
 		"prettier": "^3.3.3",
 		"typescript": "^5.5.4",
 		"vitest": "^2.0.5"

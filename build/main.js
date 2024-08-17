@@ -22,16 +22,27 @@ var __importStar = (this && this.__importStar) || function (mod) {
     __setModuleDefault(result, mod);
     return result;
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.processFile = processFile;
+exports.indent = indent;
 exports.createTypes = createTypes;
-exports.typeToString = typeToString;
 // import * as fs from 'fs/promises';
 const fs_1 = require("fs");
 const ts = __importStar(require("typescript"));
+const debug_1 = __importDefault(require("debug"));
+const baseDebugger = (0, debug_1.default)('proptype-converter');
 const simplePropType = /^PropTypes\.(string|bool|number|node|func)\.?(isRequired)?$/;
+/**
+ * Parse a TS/JS file for PropTypes
+ */
 async function processFile(fileName) {
+    const d = baseDebugger.extend('processFile');
+    d('reading file');
     const sourceFile = ts.createSourceFile(fileName, (0, fs_1.readFileSync)(fileName).toString(), ts.ScriptTarget.ES2015, true);
+    d('file read', { wasSuccessful: Boolean(sourceFile) });
     if (!sourceFile) {
         console.error('No sourceFile');
         return null;
@@ -44,11 +55,15 @@ async function processFile(fileName) {
             ts.isPropertyAccessExpression(node.expression.left) &&
             node.expression.left.name.getText() === 'propTypes') {
             const componentName = node.expression.left.expression.getText();
+            d('found PropTypes for component', componentName);
             if (ts.isObjectLiteralExpression(node.expression.right)) {
                 const mappedProperties = new Map();
                 const notMappedProperties = new Map();
                 node.expression.right.properties.forEach((property) => {
                     const name = property.name?.getText();
+                    if (!name) {
+                        return;
+                    }
                     let tsType = null;
                     let required = false;
                     if (ts.isPropertyAssignment(property)) {
@@ -80,82 +95,180 @@ async function processFile(fileName) {
     return components;
 }
 function getPropertyDetails(property) {
+    const d = baseDebugger.extend('getPropertyDetails');
     const simpleResult = getSimplePropertyDetails(property);
     if (simpleResult.status === 'success') {
+        d('found simple PropType match for property', simpleResult);
         return simpleResult;
     }
     const callResult = getCallPropertyDetails(property);
     if (callResult.status === 'success') {
+        d('found call PropType match for property', callResult);
         return callResult;
     }
+    d('could not match property', property.getText());
     return {
         status: 'notMatched',
         propertyText: property.getText(),
     };
 }
-function getCallPropertyDetails(property) {
-    if (ts.isCallExpression(property.initializer) &&
-        ts.isPropertyAccessExpression(property.initializer.expression)) {
-        const callType = property.initializer.expression.name.getText();
-        const args = property.initializer.arguments
+function createOneOfType(args, required = false) {
+    const d = baseDebugger.extend('createOneOfType');
+    if (!args) {
+        d('no args, not matched');
+        return {
+            status: 'notMatched',
+            propertyText: '',
+        };
+    }
+    if (Array.isArray(args.args)) {
+        return {
+            status: 'success',
+            tsType: `${args.args.join(' | ')}`,
+            required,
+        };
+    }
+    d('could not match any oneOf type we could understand...');
+    return {
+        status: 'notMatched',
+        propertyText: '',
+    };
+}
+function createShapeType(args, required = false) {
+    if (!args) {
+        return {
+            status: 'notMatched',
+            propertyText: '',
+        };
+    }
+    const typeText = `{\n${args.args.map((arg) => `\t${arg}`).join('\n')}\n}`;
+    return {
+        status: 'success',
+        tsType: typeText,
+        required,
+    };
+}
+function getObjectLiteralDetails(node) {
+    return node.properties.map((argProperty) => {
+        const propertyName = argProperty.name?.getText();
+        if (!propertyName) {
+            return null;
+        }
+        if (ts.isPropertyAssignment(argProperty) &&
+            ts.isPropertyAccessExpression(argProperty.initializer)) {
+            const result = getPropertyDetails(argProperty);
+            if (result.status === 'success') {
+                return `${propertyName}${result.required ? '' : '?'}: ${result.tsType}`;
+            }
+            else {
+                return `${propertyName}: unknown // could not parse`;
+            }
+        }
+        return null;
+    });
+}
+/**
+ * Get types for PropTypes that represent a call expression...
+ */
+function getCallExpressionArgs(node) {
+    const d = baseDebugger.extend('getCallExpressionArgs');
+    if (ts.isPropertyAccessExpression(node.expression)) {
+        const callType = node.expression.name.getText();
+        d('found callType', callType);
+        const args = node.arguments
             .map((argument) => {
             if (ts.isArrayLiteralExpression(argument)) {
-                return argument.elements.map((element) => {
+                const arrayLiteral = argument.elements.map((element) => {
                     return element.getText();
                 });
+                return arrayLiteral;
             }
             else if (ts.isObjectLiteralExpression(argument)) {
-                return argument.properties.map((argProperty) => {
-                    const propertyName = argProperty.name?.getText();
-                    if (!propertyName) {
-                        return null;
-                    }
-                    if (ts.isPropertyAssignment(argProperty) &&
-                        ts.isPropertyAccessExpression(argProperty.initializer)) {
-                        const result = getPropertyDetails(argProperty);
-                        if (result.status === 'success') {
-                            return `${propertyName}${result.required ? '' : '?'}: ${result.tsType}`;
-                        }
-                        else {
-                            return `${propertyName}: unknown // could not parse`;
-                        }
-                    }
-                });
+                return getObjectLiteralDetails(argument);
             }
+            else if (ts.isCallExpression(argument) &&
+                ts.isPropertyAccessExpression(argument.expression)) {
+                const callType = argument.expression.name.getText();
+                const nestedArgs = argument.arguments.map((nestedArg) => {
+                    if (ts.isObjectLiteralExpression(nestedArg)) {
+                        return getObjectLiteralDetails(nestedArg);
+                    }
+                    return null;
+                });
+                return {
+                    callType,
+                    args: nestedArgs,
+                };
+            }
+            return null;
         })
             .flat();
-        if (callType === 'oneOf') {
-            return {
-                status: 'success',
-                tsType: `${args.join(' | ')}`,
-                required: false,
-            };
+        d('found CallExpression args', {
+            callType,
+            args,
+        });
+        return { callType, args };
+    }
+    return null;
+}
+function getCallPropertyDetails(property) {
+    const d = baseDebugger.extend('getCallPropertyDetails');
+    // match most simple types
+    if (ts.isCallExpression(property.initializer) &&
+        ts.isPropertyAccessExpression(property.initializer.expression)) {
+        d('is CallExpression with PropertyAccessExpression');
+        const argDetails = getCallExpressionArgs(property.initializer);
+        if (argDetails) {
+            const { callType, args } = argDetails;
+            d('found callType', callType);
+            if (callType === 'oneOf') {
+                const result = createOneOfType(argDetails);
+                d('oneOf result', result);
+                return result;
+            }
+            else if (callType === 'shape') {
+                return createShapeType(argDetails);
+            }
+            else if (callType === 'arrayOf') {
+                const types = args.map((arg) => {
+                    if (typeof arg === 'string') {
+                        return arg;
+                    }
+                    if (typeof arg === 'object' &&
+                        arg &&
+                        'callType' in arg &&
+                        arg?.callType === 'shape') {
+                        const result = createShapeType(arg);
+                        return result.status === 'success' ? result.tsType : null;
+                    }
+                    return null;
+                });
+                return {
+                    status: 'success',
+                    tsType: `${types.join(' ')}[]`,
+                    required: false,
+                };
+            }
         }
-        else if (callType === 'shape') {
-            return {
-                status: 'success',
-                tsType: `{\n${args.map((arg) => `\t${arg}`).join('\n')}\n}`,
-                required: false,
-            };
+        else {
+            console.warn('Could not getCallExpressionArgs');
         }
     }
+    // typically matches a call expression with .isRequired tacked on
     else if (ts.isPropertyAccessExpression(property.initializer) &&
         ts.isCallExpression(property.initializer.expression) &&
         ts.isPropertyAccessExpression(property.initializer.expression.expression)) {
         const callType = property.initializer.expression.expression.name.getText();
-        const args = property.initializer.expression.arguments
-            .map((argument) => {
-            if (ts.isArrayLiteralExpression(argument)) {
-                return argument.elements.map((element) => {
-                    return element.getText();
-                });
-            }
-        })
-            .flat();
+        const result = getCallExpressionArgs(property.initializer.expression);
+        const args = result ? result.args : [];
         if (callType === 'oneOf') {
+            return createOneOfType({ callType, args }, property.initializer.name.getText() === 'isRequired');
+        }
+        else if (callType === 'shape') {
+            d('Found shape', { args });
             return {
                 status: 'success',
-                tsType: `${args.join(' | ')}`,
+                tsType: `{\n${args.map((arg) => `\t${arg}`).join('\n')}\n}`,
                 required: property.initializer.name.getText() === 'isRequired',
             };
         }
@@ -165,9 +278,16 @@ function getCallPropertyDetails(property) {
         propertyText: property.getText(),
     };
 }
-function getSimplePropertyDetails(property) {
+/**
+ * Try to match a property to very simple PropTypes.
+ *
+ * Uses a crude regex check to see if the text matches something easy.
+ */
+function getSimplePropertyDetails(property, indentLevel = 0) {
+    const d = baseDebugger.extend('getSimplePropertyDetails');
     // glance at the type and see if it is a common/simple thing we can convert without much hassle:
     const propertyText = property.initializer.getText().trim();
+    d('testing property for simple PropType match', propertyText);
     if (simplePropType.test(propertyText)) {
         const result = simplePropType.exec(propertyText);
         if (!result) {
@@ -201,8 +321,11 @@ function mapPropTypeTypeToTSType(propTypeType) {
             return null;
     }
 }
+function indent(text, indentLevel = 0) {
+    return `\n`.repeat(indentLevel) + text;
+}
 function createTypes(components) {
-    components?.forEach((component, name) => {
+    return Array.from(components ?? []).map(([name, component]) => {
         const propsTypeName = `${name}Props`;
         const lines = [`type ${propsTypeName} = {`];
         const allProperties = new Map();
@@ -213,12 +336,48 @@ function createTypes(components) {
             allProperties.set(name, ['unknown; // Could not process this property']);
         });
         allProperties.forEach((propertyLines, name) => {
-            lines.push(`\t${name}: ${propertyLines.join('\n')}`);
+            const indentedPropertyLines = indentLines(propertyLines);
+            lines.push(`\t${name}: ${indentedPropertyLines.join('\n')}`);
         });
         lines.push('}');
-        console.log(lines.join('\n'));
+        return lines.join('\n');
     });
 }
-function typeToString({ tsType, required, }) {
+function semiColonLine(line) {
+    if (line.includes('// ')) {
+        const [lineWithoutComment, comment] = line.split('//');
+        if (!lineWithoutComment.trim().endsWith(';')) {
+            return `${lineWithoutComment.trim()}; // ${comment}`;
+        }
+        return line;
+    }
+    if (!line.endsWith(';')) {
+        return `${line};`;
+    }
+    return line;
+}
+function indentLines(lines, indentLevel = 1) {
+    return lines.map((line) => {
+        // a line is a string that may contain its own line breaks and we want
+        // to indent those lines-within-a-line...
+        let expandedLine = line.split('\n');
+        if (expandedLine.length > 1) {
+            // nested shape, we need to indent the last line and intent the middle lines by +1
+            if (expandedLine[0] === '{' &&
+                expandedLine[expandedLine.length - 1].startsWith('}')) {
+                expandedLine = expandedLine.map((nestedLine, index) => {
+                    if (index === 0) {
+                        return nestedLine;
+                    }
+                    let modifiedLine = semiColonLine(`\t${nestedLine}`);
+                    return modifiedLine;
+                });
+            }
+            return expandedLine.join('\n');
+        }
+        return semiColonLine(line);
+    });
+}
+function typeToString({ tsType }) {
     return [`${tsType};`];
 }

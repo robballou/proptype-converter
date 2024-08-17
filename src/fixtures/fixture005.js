@@ -9,4 +9,7 @@ MyComponent.propTypes = {
 	someObject: PropTypes.shape({
 		key: PropTypes.string,
 	}),
+	requiredProp: PropTypes.shape({
+		key: PropTypes.string,
+	}).isRequired,
 };

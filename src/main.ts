@@ -1,10 +1,15 @@
 // import * as fs from 'fs/promises';
 import { readFileSync } from 'fs';
 import * as ts from 'typescript';
+import createDebugger from 'debug';
 
+const baseDebugger = createDebugger('proptype-converter');
 const simplePropType =
 	/^PropTypes\.(string|bool|number|node|func)\.?(isRequired)?$/;
 
+/**
+ * Parse a TS/JS file for PropTypes
+ */
 export async function processFile(fileName: string): Promise<Map<
 	string,
 	{
@@ -12,12 +17,16 @@ export async function processFile(fileName: string): Promise<Map<
 		notMappedProperties: Map<string, string>;
 	}
 > | null> {
+	const d = baseDebugger.extend('processFile');
+
+	d('reading file');
 	const sourceFile = ts.createSourceFile(
 		fileName,
 		readFileSync(fileName).toString(),
 		ts.ScriptTarget.ES2015,
 		true,
 	);
+	d('file read', { wasSuccessful: Boolean(sourceFile) });
 
 	if (!sourceFile) {
 		console.error('No sourceFile');
@@ -35,11 +44,15 @@ export async function processFile(fileName: string): Promise<Map<
 			node.expression.left.name.getText() === 'propTypes'
 		) {
 			const componentName = node.expression.left.expression.getText();
+			d('found PropTypes for component', componentName);
 			if (ts.isObjectLiteralExpression(node.expression.right)) {
 				const mappedProperties = new Map();
 				const notMappedProperties = new Map();
 				node.expression.right.properties.forEach((property) => {
 					const name = property.name?.getText();
+					if (!name) {
+						return;
+					}
 					let tsType = null;
 					let required = false;
 					if (ts.isPropertyAssignment(property)) {
@@ -83,16 +96,21 @@ type PropertyDetailsResult =
 function getPropertyDetails(
 	property: ts.PropertyAssignment,
 ): PropertyDetailsResult {
+	const d = baseDebugger.extend('getPropertyDetails');
+
 	const simpleResult = getSimplePropertyDetails(property);
 	if (simpleResult.status === 'success') {
+		d('found simple PropType match for property', simpleResult);
 		return simpleResult;
 	}
 
 	const callResult = getCallPropertyDetails(property);
 	if (callResult.status === 'success') {
+		d('found call PropType match for property', callResult);
 		return callResult;
 	}
 
+	d('could not match property', property.getText());
 	return {
 		status: 'notMatched',
 		propertyText: property.getText(),
@@ -103,6 +121,34 @@ function createOneOfType(
 	args: ReturnType<typeof getCallExpressionArgs>,
 	required = false,
 ): PropertyDetailsResult {
+	const d = baseDebugger.extend('createOneOfType');
+	if (!args) {
+		d('no args, not matched');
+		return {
+			status: 'notMatched',
+			propertyText: '',
+		};
+	}
+
+	if (Array.isArray(args.args)) {
+		return {
+			status: 'success',
+			tsType: `${args.args.join(' | ')}`,
+			required,
+		};
+	}
+
+	d('could not match any oneOf type we could understand...');
+	return {
+		status: 'notMatched',
+		propertyText: '',
+	};
+}
+
+function createShapeType(
+	args: ReturnType<typeof getCallExpressionArgs>,
+	required = false,
+): PropertyDetailsResult {
 	if (!args) {
 		return {
 			status: 'notMatched',
@@ -110,30 +156,17 @@ function createOneOfType(
 		};
 	}
 
-	if (Array.isArray(args)) {
-		return {
-			status: 'success',
-			tsType: `${args.join(' | ')}`,
-			required,
-		};
-	}
-
-	const { callType, args: nestedArgs } = args;
-	if (callType === 'shape') {
-		return {
-			status: 'success',
-			tsType: `{\n${nestedArgs.map((arg) => `\t${arg}`).join('\n')}\n}`,
-			required: false,
-		};
-	}
-
+	const typeText = `{\n${args.args.map((arg) => `\t${arg}`).join('\n')}\n}`;
 	return {
-		status: 'notMatched',
-		propertyText: '',
+		status: 'success',
+		tsType: typeText,
+		required,
 	};
 }
 
-function getObjectLiteralDetails(node: ts.ObjectLiteralExpression) {
+function getObjectLiteralDetails(
+	node: ts.ObjectLiteralExpression,
+): (string | null)[] {
 	return node.properties.map((argProperty) => {
 		const propertyName = argProperty.name?.getText();
 		if (!propertyName) {
@@ -150,21 +183,32 @@ function getObjectLiteralDetails(node: ts.ObjectLiteralExpression) {
 				return `${propertyName}: unknown // could not parse`;
 			}
 		}
+		return null;
 	});
 }
+
+type CallTypeDetails = {
+	callType: string;
+	args: (string | null | CallTypeDetails | (string | null)[])[];
+};
 
 /**
  * Get types for PropTypes that represent a call expression...
  */
-function getCallExpressionArgs(node: ts.CallExpression) {
+function getCallExpressionArgs(
+	node: ts.CallExpression,
+): CallTypeDetails | null {
+	const d = baseDebugger.extend('getCallExpressionArgs');
 	if (ts.isPropertyAccessExpression(node.expression)) {
 		const callType = node.expression.name.getText();
+		d('found callType', callType);
 		const args = node.arguments
 			.map((argument) => {
 				if (ts.isArrayLiteralExpression(argument)) {
-					return argument.elements.map((element) => {
+					const arrayLiteral = argument.elements.map((element) => {
 						return element.getText();
 					});
+					return arrayLiteral;
 				} else if (ts.isObjectLiteralExpression(argument)) {
 					return getObjectLiteralDetails(argument);
 				} else if (
@@ -176,14 +220,20 @@ function getCallExpressionArgs(node: ts.CallExpression) {
 						if (ts.isObjectLiteralExpression(nestedArg)) {
 							return getObjectLiteralDetails(nestedArg);
 						}
+						return null;
 					});
 					return {
 						callType,
 						args: nestedArgs,
 					};
 				}
+				return null;
 			})
 			.flat();
+		d('found CallExpression args', {
+			callType,
+			args,
+		});
 		return { callType, args };
 	}
 
@@ -193,29 +243,37 @@ function getCallExpressionArgs(node: ts.CallExpression) {
 function getCallPropertyDetails(
 	property: ts.PropertyAssignment,
 ): PropertyDetailsResult {
+	const d = baseDebugger.extend('getCallPropertyDetails');
+
 	// match most simple types
 	if (
 		ts.isCallExpression(property.initializer) &&
 		ts.isPropertyAccessExpression(property.initializer.expression)
 	) {
+		d('is CallExpression with PropertyAccessExpression');
 		const argDetails = getCallExpressionArgs(property.initializer);
 		if (argDetails) {
 			const { callType, args } = argDetails;
+			d('found callType', callType);
 			if (callType === 'oneOf') {
-				return createOneOfType(argDetails);
+				const result = createOneOfType(argDetails);
+				d('oneOf result', result);
+				return result;
 			} else if (callType === 'shape') {
-				return {
-					status: 'success',
-					tsType: `{\n${args.map((arg) => `\t${arg}`).join('\n')}\n}`,
-					required: false,
-				};
+				return createShapeType(argDetails);
 			} else if (callType === 'arrayOf') {
 				const types = args.map((arg) => {
 					if (typeof arg === 'string') {
 						return arg;
 					}
-					if (arg?.callType === 'shape') {
-						return `{\n${arg.args.map((arg) => `\t${arg}`).join('\n')}\n}`;
+					if (
+						typeof arg === 'object' &&
+						arg &&
+						'callType' in arg &&
+						arg?.callType === 'shape'
+					) {
+						const result = createShapeType(arg);
+						return result.status === 'success' ? result.tsType : null;
 					}
 					return null;
 				});
@@ -228,26 +286,28 @@ function getCallPropertyDetails(
 		} else {
 			console.warn('Could not getCallExpressionArgs');
 		}
-	} else if (
+	}
+	// typically matches a call expression with .isRequired tacked on
+	else if (
 		ts.isPropertyAccessExpression(property.initializer) &&
 		ts.isCallExpression(property.initializer.expression) &&
 		ts.isPropertyAccessExpression(property.initializer.expression.expression)
 	) {
 		const callType = property.initializer.expression.expression.name.getText();
-		const args = property.initializer.expression.arguments
-			.map((argument) => {
-				if (ts.isArrayLiteralExpression(argument)) {
-					return argument.elements.map((element) => {
-						return element.getText();
-					});
-				}
-			})
-			.flat();
+		const result = getCallExpressionArgs(property.initializer.expression);
+		const args = result ? result.args : [];
 		if (callType === 'oneOf') {
 			return createOneOfType(
 				{ callType, args },
 				property.initializer.name.getText() === 'isRequired',
 			);
+		} else if (callType === 'shape') {
+			d('Found shape', { args });
+			return {
+				status: 'success',
+				tsType: `{\n${args.map((arg) => `\t${arg}`).join('\n')}\n}`,
+				required: property.initializer.name.getText() === 'isRequired',
+			};
 		}
 	}
 	return {
@@ -256,14 +316,19 @@ function getCallPropertyDetails(
 	};
 }
 
-function getArgumentDetails() {}
-
+/**
+ * Try to match a property to very simple PropTypes.
+ *
+ * Uses a crude regex check to see if the text matches something easy.
+ */
 function getSimplePropertyDetails(
 	property: ts.PropertyAssignment,
 	indentLevel = 0,
 ): PropertyDetailsResult {
+	const d = baseDebugger.extend('getSimplePropertyDetails');
 	// glance at the type and see if it is a common/simple thing we can convert without much hassle:
 	const propertyText = property.initializer.getText().trim();
+	d('testing property for simple PropType match', propertyText);
 	if (simplePropType.test(propertyText)) {
 		const result = simplePropType.exec(propertyText);
 		if (!result) {
@@ -334,9 +399,26 @@ export function createTypes(
 	});
 }
 
-export function indentLines(lines: string[], indentLevel = 1): string[] {
+function semiColonLine(line: string) {
+	if (line.includes('// ')) {
+		const [lineWithoutComment, comment] = line.split('//');
+		if (!lineWithoutComment.trim().endsWith(';')) {
+			return `${lineWithoutComment.trim()}; // ${comment}`;
+		}
+		return line;
+	}
+	if (!line.endsWith(';')) {
+		return `${line};`;
+	}
+	return line;
+}
+
+function indentLines(lines: string[], indentLevel = 1): string[] {
 	return lines.map((line) => {
+		// a line is a string that may contain its own line breaks and we want
+		// to indent those lines-within-a-line...
 		let expandedLine = line.split('\n');
+
 		if (expandedLine.length > 1) {
 			// nested shape, we need to indent the last line and intent the middle lines by +1
 			if (
@@ -347,29 +429,16 @@ export function indentLines(lines: string[], indentLevel = 1): string[] {
 					if (index === 0) {
 						return nestedLine;
 					}
-					let modifiedLine = `\t${nestedLine}`;
-					if (!modifiedLine.endsWith(';')) {
-						modifiedLine += ';';
-					}
+					let modifiedLine = semiColonLine(`\t${nestedLine}`);
 					return modifiedLine;
 				});
 			}
 			return expandedLine.join('\n');
 		}
-
-		if (!line.endsWith(';')) {
-			return `${line};`;
-		}
-		return line;
+		return semiColonLine(line);
 	});
 }
 
-export function typeToString({
-	tsType,
-	required,
-}: {
-	tsType: string;
-	required: boolean;
-}) {
+function typeToString({ tsType }: { tsType: string }) {
 	return [`${tsType};`];
 }

@@ -1,0 +1,59 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`fixture 001: basic 1`] = `
+[
+  "type MyComponentProps = {
+	className: string;
+}",
+]
+`;
+
+exports[`fixture 002: simple PropTypes only 1`] = `
+[
+  "type MyComponentProps = {
+	className: string;
+	something?: boolean;
+	children?: React.ReactNode;
+}",
+]
+`;
+
+exports[`fixture 003: a PropType we cannot map 1`] = `
+[
+  "type MyComponentProps = {
+	custom: unknown; // Could not process this property
+}",
+]
+`;
+
+exports[`fixture 004: oneOf 1`] = `
+[
+  "type MyComponentProps = {
+	custom?: 'test' | 'thing';
+	requiredThing: 0 | 1 | 2 | 3 | 4 | 5;
+}",
+]
+`;
+
+exports[`fixture 005: shape 1`] = `
+[
+  "type MyComponentProps = {
+	someObject?: {
+		key?: string;
+	};
+	requiredProp: {
+		key?: string;
+	};
+}",
+]
+`;
+
+exports[`fixture 006: shape array 1`] = `
+[
+  "type MyComponentProps = {
+	someObject?: {
+		key?: string;
+	}[];
+}",
+]
+`;
