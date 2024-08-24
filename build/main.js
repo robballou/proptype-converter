@@ -33,7 +33,20 @@ const ts = __importStar(require("typescript"));
 const debug_1 = __importDefault(require("debug"));
 const baseDebugger = (0, debug_1.default)('proptype-converter');
 const simplePropType = /^PropTypes\.(string|bool|number|node|func)\.?(isRequired)?$/;
-function processSourceFile(sourceFile) {
+const defaultProcessSourceFileOptions = {
+    includeJSDocCommentInComponentPosition: true,
+};
+/**
+ * Given a source file, process it to find PropTypes and components.
+ *
+ * This function returns a `Map` of components with their matching component PropType
+ * details.
+ */
+function processSourceFile(sourceFile, options = {}) {
+    const processingOptions = {
+        ...defaultProcessSourceFileOptions,
+        ...options,
+    };
     const d = baseDebugger.extend('processSourceFile');
     const components = new Map();
     const possibleComponents = new Map();
@@ -85,7 +98,10 @@ function processSourceFile(sourceFile) {
         else if (ts.isFunctionDeclaration(node)) {
             const functionName = node.name?.getText();
             if (functionName) {
-                possibleComponents.set(functionName, [node.getStart(), node.getEnd()]);
+                possibleComponents.set(functionName, [
+                    node.getStart(sourceFile, processingOptions.includeJSDocCommentInComponentPosition),
+                    node.getEnd(),
+                ]);
             }
         }
     });
