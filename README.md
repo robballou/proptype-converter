@@ -1,6 +1,6 @@
 # PropType Converter
 
-A rudimentary PropType-to-TypeScript-Type-Converter that is meant to create a starting point for converting PropTypes to TypeScript Types.
+A rudimentary PropType-to-TypeScript-Type-Converter that is meant to create a starting point for converting PropTypes to TypeScript Types. This is also now a [VSCode extension](https://marketplace.visualstudio.com/items?itemName=robballou.vscode-pt-converter)!
 
 ## Usage
 
@@ -8,6 +8,9 @@ Now available on NPM:
 
 ```shell
 npm install proptype-converter
+
+# or run the shell command with npx!
+npx proptype-converter [...files[]]
 ```
 
 Or manually:
