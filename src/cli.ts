@@ -1,5 +1,6 @@
 import { parseArgs } from 'node:util';
-import { createTypes, processFile } from './main';
+import { createTypesForComponents } from './main';
+import { processFile } from './file';
 
 function isFulfilled<T>(
 	p: PromiseSettledResult<T>,
@@ -49,7 +50,12 @@ async function main(args: string[]) {
 	}
 
 	fulfilledFiles.forEach((fileResults) => {
-		createTypes(fileResults).forEach((typeResult) => console.log(typeResult));
+		if (!fileResults) {
+			return;
+		}
+		createTypesForComponents(fileResults).forEach((typeResult) =>
+			console.log(typeResult),
+		);
 	});
 
 	process.exit(status);

@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
-import { createTypes, processFile } from './main';
+import { createTypesForComponents } from './main';
+import { processFile } from './file';
 import path from 'path';
 
 test('fixture 001: basic', async () => {
@@ -17,7 +18,7 @@ test('fixture 001: basic', async () => {
 	expect(className.tsType).toEqual('string');
 	expect(className.required).toBe(true);
 
-	expect(createTypes(result)).toMatchSnapshot();
+	expect(createTypesForComponents(result!)).toMatchSnapshot();
 });
 
 test('fixture 002: simple PropTypes only', async () => {
@@ -43,7 +44,7 @@ test('fixture 002: simple PropTypes only', async () => {
 	expect(children.tsType).toEqual('React.ReactNode');
 	expect(children.required).toBe(false);
 
-	expect(createTypes(result)).toMatchSnapshot();
+	expect(createTypesForComponents(result!)).toMatchSnapshot();
 });
 
 test('fixture 003: a PropType we cannot map', async () => {
@@ -58,7 +59,7 @@ test('fixture 003: a PropType we cannot map', async () => {
 	expect(component.notMappedProperties.size).toEqual(1);
 	expect(component.notMappedProperties.has('custom')).toBe(true);
 
-	expect(createTypes(result)).toMatchSnapshot();
+	expect(createTypesForComponents(result!)).toMatchSnapshot();
 });
 
 test('fixture 004: oneOf', async () => {
@@ -80,7 +81,7 @@ test('fixture 004: oneOf', async () => {
 	expect(requiredThing.tsType).toEqual(`0 | 1 | 2 | 3 | 4 | 5`);
 	expect(requiredThing.required).toBe(true);
 
-	expect(createTypes(result)).toMatchSnapshot();
+	expect(createTypesForComponents(result!)).toMatchSnapshot();
 });
 
 test('fixture 005: shape', async () => {
@@ -102,7 +103,7 @@ test('fixture 005: shape', async () => {
 	expect(requiredProp.tsType).toContain('key');
 	expect(requiredProp.required).toBe(true);
 
-	expect(createTypes(result)).toMatchSnapshot();
+	expect(createTypesForComponents(result!)).toMatchSnapshot();
 });
 
 test('fixture 006: shape array', async () => {
@@ -120,5 +121,5 @@ test('fixture 006: shape array', async () => {
 	expect(someObject.tsType).toContain('key');
 	expect(someObject.required).toBe(false);
 
-	expect(createTypes(result)).toMatchSnapshot();
+	expect(createTypesForComponents(result!)).toMatchSnapshot();
 });
