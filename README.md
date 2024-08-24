@@ -4,6 +4,14 @@ A rudimentary PropType-to-TypeScript-Type-Converter that is meant to create a st
 
 ## Usage
 
+Now available on NPM:
+
+```
+npm install proptype-converter
+```
+
+Or manually:
+
 ```
 # use correct node version...
 nvm use
