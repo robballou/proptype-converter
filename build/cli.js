@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const node_util_1 = require("node:util");
 const main_1 = require("./main");
+const file_1 = require("./file");
 function isFulfilled(p) {
     return p.status === 'fulfilled';
 }
@@ -25,7 +26,7 @@ async function main(args) {
     }
     const promises = [];
     positionalArguments.forEach((fileName) => {
-        promises.push((0, main_1.processFile)(fileName));
+        promises.push((0, file_1.processFile)(fileName));
     });
     const results = await Promise.allSettled(promises);
     const fulfilledFiles = results
@@ -40,7 +41,10 @@ async function main(args) {
         });
     }
     fulfilledFiles.forEach((fileResults) => {
-        (0, main_1.createTypes)(fileResults).forEach((typeResult) => console.log(typeResult));
+        if (!fileResults) {
+            return;
+        }
+        (0, main_1.createTypesForComponents)(fileResults).forEach((typeResult) => console.log(typeResult));
     });
     process.exit(status);
 }

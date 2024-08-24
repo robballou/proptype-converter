@@ -26,32 +26,17 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.processFile = processFile;
 exports.processSourceFile = processSourceFile;
-exports.createTypes = createTypes;
-// import * as fs from 'fs/promises';
-const fs_1 = require("fs");
+exports.createTypeForComponent = createTypeForComponent;
+exports.createTypesForComponents = createTypesForComponents;
 const ts = __importStar(require("typescript"));
 const debug_1 = __importDefault(require("debug"));
 const baseDebugger = (0, debug_1.default)('proptype-converter');
 const simplePropType = /^PropTypes\.(string|bool|number|node|func)\.?(isRequired)?$/;
-/**
- * Parse a TS/JS file for PropTypes
- */
-async function processFile(fileName) {
-    const d = baseDebugger.extend('processFile');
-    d('reading file');
-    const sourceFile = ts.createSourceFile(fileName, (0, fs_1.readFileSync)(fileName).toString(), ts.ScriptTarget.ES2015, true);
-    d('file read', { wasSuccessful: Boolean(sourceFile) });
-    if (!sourceFile) {
-        console.error('No sourceFile');
-        return null;
-    }
-    return await processSourceFile(sourceFile);
-}
-async function processSourceFile(sourceFile) {
+function processSourceFile(sourceFile) {
     const d = baseDebugger.extend('processSourceFile');
     const components = new Map();
+    const possibleComponents = new Map();
     ts.forEachChild(sourceFile, (node) => {
         // find [Component].propTypes
         if (ts.isExpressionStatement(node) &&
@@ -92,7 +77,15 @@ async function processSourceFile(sourceFile) {
                 components.set(componentName, {
                     mappedProperties,
                     notMappedProperties,
+                    range: [node.getStart(), node.getEnd()],
+                    componentRange: possibleComponents.get(componentName) ?? null,
                 });
+            }
+        }
+        else if (ts.isFunctionDeclaration(node)) {
+            const functionName = node.name?.getText();
+            if (functionName) {
+                possibleComponents.set(functionName, [node.getStart(), node.getEnd()]);
             }
         }
     });
@@ -339,23 +332,26 @@ function mapPropTypeTypeToTSType(propTypeType) {
             return null;
     }
 }
-function createTypes(components) {
+function createTypeForComponent(name, component) {
+    const propsTypeName = `${name}Props`;
+    const lines = [`type ${propsTypeName} = {`];
+    const allProperties = new Map();
+    component.mappedProperties.forEach((property, name) => {
+        allProperties.set(`${name}${!property.required ? '?' : ''}`, typeToString(property));
+    });
+    component.notMappedProperties.forEach((property, name) => {
+        allProperties.set(name, ['unknown; // Could not process this property']);
+    });
+    allProperties.forEach((propertyLines, name) => {
+        const indentedPropertyLines = indentLines(propertyLines);
+        lines.push(`\t${name}: ${indentedPropertyLines.join('\n')}`);
+    });
+    lines.push('}');
+    return lines.join('\n');
+}
+function createTypesForComponents(components) {
     return Array.from(components ?? []).map(([name, component]) => {
-        const propsTypeName = `${name}Props`;
-        const lines = [`type ${propsTypeName} = {`];
-        const allProperties = new Map();
-        component.mappedProperties.forEach((property, name) => {
-            allProperties.set(`${name}${!property.required ? '?' : ''}`, typeToString(property));
-        });
-        component.notMappedProperties.forEach((property, name) => {
-            allProperties.set(name, ['unknown; // Could not process this property']);
-        });
-        allProperties.forEach((propertyLines, name) => {
-            const indentedPropertyLines = indentLines(propertyLines);
-            lines.push(`\t${name}: ${indentedPropertyLines.join('\n')}`);
-        });
-        lines.push('}');
-        return lines.join('\n');
+        return createTypeForComponent(name, component);
     });
 }
 function semiColonLine(line) {
