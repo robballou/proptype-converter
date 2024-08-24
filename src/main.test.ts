@@ -2,6 +2,7 @@ import { expect, test } from 'vitest';
 import { createTypesForComponents } from './main';
 import { processFile } from './file';
 import path from 'path';
+import fs from 'fs/promises';
 
 test('fixture 001: basic', async () => {
 	const result = await processFile(
@@ -122,4 +123,16 @@ test('fixture 006: shape array', async () => {
 	expect(someObject.required).toBe(false);
 
 	expect(createTypesForComponents(result!)).toMatchSnapshot();
+});
+
+test('fixture 007: jsdoc', async () => {
+	const fixturePath = path.resolve(__dirname, './fixtures/fixture007.js');
+	const fixtureData = fs.readFile(fixturePath, 'utf-8');
+	const result = await processFile(fixturePath);
+	const component = result!.get('MyComponent');
+	const text = (await fixtureData).substring(
+		component!.componentRange![0],
+		component!.componentRange![1],
+	);
+	expect(text.startsWith('/**')).toBe(true);
 });

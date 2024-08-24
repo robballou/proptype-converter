@@ -6,13 +6,13 @@ A rudimentary PropType-to-TypeScript-Type-Converter that is meant to create a st
 
 Now available on NPM:
 
-```
+```shell
 npm install proptype-converter
 ```
 
 Or manually:
 
-```
+```shell
 # use correct node version...
 nvm use
 
@@ -58,6 +58,18 @@ If a PropType is too complicated or "not supported" by the script, it will add t
 type MyComponentProps = {
 	custom: unknown; // Could not process this property
 }
+```
+
+## Use as a module
+
+This code comes with a CLI tool, but it can also be used as a dependency in other applications:
+
+```TypeScript
+import { processSourceFile } from 'proptype-converter';
+import * as ts from 'typescript';
+
+const sourceFile = ts.createSourceFile(...)
+const result = processSourceFile(sourceFile);
 ```
 
 ## Developing

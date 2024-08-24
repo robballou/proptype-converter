@@ -12,9 +12,28 @@ type ComponentPropTypes = {
 	componentRange: [number, number] | null;
 };
 
+type ProcessSourceFileOptions = {
+	includeJSDocCommentInComponentPosition: boolean;
+};
+
+const defaultProcessSourceFileOptions: ProcessSourceFileOptions = {
+	includeJSDocCommentInComponentPosition: true,
+};
+
+/**
+ * Given a source file, process it to find PropTypes and components.
+ *
+ * This function returns a `Map` of components with their matching component PropType
+ * details.
+ */
 export function processSourceFile(
 	sourceFile: ts.SourceFile,
+	options: Partial<ProcessSourceFileOptions> = {},
 ): Map<string, ComponentPropTypes> {
+	const processingOptions: ProcessSourceFileOptions = {
+		...defaultProcessSourceFileOptions,
+		...options,
+	};
 	const d = baseDebugger.extend('processSourceFile');
 	const components = new Map();
 	const possibleComponents = new Map<string, [number, number]>();
@@ -67,7 +86,13 @@ export function processSourceFile(
 		} else if (ts.isFunctionDeclaration(node)) {
 			const functionName = node.name?.getText();
 			if (functionName) {
-				possibleComponents.set(functionName, [node.getStart(), node.getEnd()]);
+				possibleComponents.set(functionName, [
+					node.getStart(
+						sourceFile,
+						processingOptions.includeJSDocCommentInComponentPosition,
+					),
+					node.getEnd(),
+				]);
 			}
 		}
 	});
