@@ -11,7 +11,8 @@
 		"strictNullChecks": true /* When type checking, take into account 'null' and 'undefined'. */,
 		"skipLibCheck": true /* Skip type checking all .d.ts files. */,
 		"noUnusedLocals": true,
-		"outDir": "build"
+		"outDir": "build",
+		"declaration": true
 	},
 	"include": ["src"],
 	"exclude": ["src/**/*.test.ts"]
