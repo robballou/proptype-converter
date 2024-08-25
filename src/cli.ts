@@ -1,7 +1,6 @@
 import { parseArgs } from 'node:util';
 import { createPropsForComponent, createTypesForComponents } from './main';
 import { processFile } from './file';
-import * as packageDetails from '../package.json';
 import createDebugger from 'debug';
 
 const debug = createDebugger('proptype-converter:cli');
@@ -25,11 +24,6 @@ async function main(args: string[]) {
 				short: 'h',
 				default: false,
 			},
-			version: {
-				type: 'boolean',
-				short: 'v',
-				default: false,
-			},
 			noTypes: {
 				type: 'boolean',
 				short: 't',
@@ -42,11 +36,6 @@ async function main(args: string[]) {
 		},
 		allowPositionals: true,
 	});
-
-	if (values.version) {
-		console.log(packageDetails.version);
-		return;
-	}
 
 	if (values.help || positionalArguments.length === 0) {
 		usage();

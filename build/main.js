@@ -28,6 +28,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.processSourceFile = processSourceFile;
 exports.createTypeForComponent = createTypeForComponent;
+exports.createPropsForComponent = createPropsForComponent;
 exports.createTypesForComponents = createTypesForComponents;
 const ts = __importStar(require("typescript"));
 const debug_1 = __importDefault(require("debug"));
@@ -49,13 +50,11 @@ function processSourceFile(sourceFile, options = {}) {
     };
     const d = baseDebugger.extend('processSourceFile');
     const components = new Map();
+    const componentDefaultProps = new Map();
     const possibleComponents = new Map();
     ts.forEachChild(sourceFile, (node) => {
         // find [Component].propTypes
-        if (ts.isExpressionStatement(node) &&
-            ts.isBinaryExpression(node.expression) &&
-            ts.isPropertyAccessExpression(node.expression.left) &&
-            node.expression.left.name.getText() === 'propTypes') {
+        if (isExpressionWithName(node, 'propTypes')) {
             const componentName = node.expression.left.expression.getText();
             d('found PropTypes for component', componentName);
             if (ts.isObjectLiteralExpression(node.expression.right)) {
@@ -91,21 +90,74 @@ function processSourceFile(sourceFile, options = {}) {
                     mappedProperties,
                     notMappedProperties,
                     range: [node.getStart(), node.getEnd()],
-                    componentRange: possibleComponents.get(componentName) ?? null,
+                    componentRange: possibleComponents.get(componentName)?.functionPosition ?? null,
+                    parameterRange: possibleComponents.get(componentName)?.parameterPosition ?? null,
+                    defaultProps: componentDefaultProps.get(componentName) ?? null,
                 });
             }
         }
+        else if (isExpressionWithName(node, 'defaultProps')) {
+            // found [ComponentName].defaultProps = {}
+            const componentName = node.expression.left.expression.getText();
+            if (ts.isObjectLiteralExpression(node.expression.right)) {
+                const defaultProps = new Map();
+                node.expression.right.properties.forEach((property) => {
+                    const name = property.name?.getText();
+                    let value = null;
+                    if (!name) {
+                        return;
+                    }
+                    if (ts.isPropertyAssignment(property)) {
+                        value = property.initializer.getText();
+                    }
+                    defaultProps.set(name, value);
+                });
+                if (defaultProps.size > 0) {
+                    componentDefaultProps.set(componentName, defaultProps);
+                }
+            }
+        }
         else if (ts.isFunctionDeclaration(node)) {
+            // found a potential function component
             const functionName = node.name?.getText();
-            if (functionName) {
-                possibleComponents.set(functionName, [
-                    node.getStart(sourceFile, processingOptions.includeJSDocCommentInComponentPosition),
-                    node.getEnd(),
-                ]);
+            if (functionName &&
+                functionName[0] === functionName[0].toLocaleUpperCase()) {
+                possibleComponents.set(functionName, {
+                    functionPosition: [
+                        node.getStart(sourceFile, processingOptions.includeJSDocCommentInComponentPosition),
+                        node.getEnd(),
+                    ],
+                    parameterPosition: node.parameters[0]
+                        ? [node.parameters[0].getStart(), node.parameters[0].getEnd()]
+                        : null,
+                });
             }
         }
     });
+    // we may have picked up possibleComponents or componentDefaultProps after
+    // we parsed the component, so let's add any we missed...
+    possibleComponents.forEach((value, key) => {
+        const component = components.get(key);
+        if (component) {
+            component.componentRange = value.functionPosition;
+            component.parameterRange = value.parameterPosition;
+            components.set(key, component);
+        }
+    });
+    componentDefaultProps.forEach((value, key) => {
+        const component = components.get(key);
+        if (component) {
+            component.defaultProps = value;
+            components.set(key, component);
+        }
+    });
     return components;
+}
+function isExpressionWithName(node, name) {
+    return (ts.isExpressionStatement(node) &&
+        ts.isBinaryExpression(node.expression) &&
+        ts.isPropertyAccessExpression(node.expression.left) &&
+        node.expression.left.name.getText() === name);
 }
 /**
  * Try to get details of what kind of PropType this property represents.
@@ -364,6 +416,30 @@ function createTypeForComponent(name, component) {
     });
     lines.push('}');
     return lines.join('\n');
+}
+/** Create a props based on mapped types and default props */
+function createPropsForComponent(component) {
+    if (!component.defaultProps) {
+        return null;
+    }
+    const props = ['{'];
+    const propsWithValues = new Map();
+    component.mappedProperties.forEach((value, key) => {
+        propsWithValues.set(key, null);
+    });
+    component.notMappedProperties.forEach((value, key) => {
+        propsWithValues.set(key, null);
+    });
+    component.defaultProps.forEach((value, key) => {
+        propsWithValues.set(key, value);
+    });
+    const sortedKeys = Array.from(propsWithValues.keys()).sort();
+    for (const key of sortedKeys) {
+        const value = propsWithValues.get(key) ?? null;
+        props.push(value ? `${key} = ${value},` : `${key},`);
+    }
+    props.push('}');
+    return props.join(' ');
 }
 function createTypesForComponents(components) {
     return Array.from(components ?? []).map(([name, component]) => {

@@ -7,6 +7,8 @@ type ComponentPropTypes = {
     notMappedProperties: Map<string, string>;
     range: [number, number];
     componentRange: [number, number] | null;
+    parameterRange: [number, number] | null;
+    defaultProps: Map<string, string> | null;
 };
 type ProcessSourceFileOptions = {
     includeJSDocCommentInComponentPosition: boolean;
@@ -19,5 +21,7 @@ type ProcessSourceFileOptions = {
  */
 export declare function processSourceFile(sourceFile: ts.SourceFile, options?: Partial<ProcessSourceFileOptions>): Map<string, ComponentPropTypes>;
 export declare function createTypeForComponent(name: string, component: ComponentPropTypes): string;
+/** Create a props based on mapped types and default props */
+export declare function createPropsForComponent(component: ComponentPropTypes): string | null;
 export declare function createTypesForComponents(components: Awaited<ReturnType<typeof processSourceFile>>): string[];
 export {};
