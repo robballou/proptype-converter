@@ -10,6 +10,8 @@ type ComponentPropTypes = {
 	notMappedProperties: Map<string, string>;
 	range: [number, number];
 	componentRange: [number, number] | null;
+	parameterRange: [number, number] | null;
+	defaultProps: Map<string, string> | null;
 };
 
 type ProcessSourceFileOptions = {
@@ -35,16 +37,18 @@ export function processSourceFile(
 		...options,
 	};
 	const d = baseDebugger.extend('processSourceFile');
-	const components = new Map();
-	const possibleComponents = new Map<string, [number, number]>();
+	const components = new Map<string, ComponentPropTypes>();
+	const componentDefaultProps = new Map<string, Map<string, string>>();
+	const possibleComponents = new Map<
+		string,
+		{
+			functionPosition: [number, number];
+			parameterPosition: [number, number] | null;
+		}
+	>();
 	ts.forEachChild(sourceFile, (node) => {
 		// find [Component].propTypes
-		if (
-			ts.isExpressionStatement(node) &&
-			ts.isBinaryExpression(node.expression) &&
-			ts.isPropertyAccessExpression(node.expression.left) &&
-			node.expression.left.name.getText() === 'propTypes'
-		) {
+		if (isExpressionWithName(node, 'propTypes')) {
 			const componentName = node.expression.left.expression.getText();
 			d('found PropTypes for component', componentName);
 			if (ts.isObjectLiteralExpression(node.expression.right)) {
@@ -80,20 +84,72 @@ export function processSourceFile(
 					mappedProperties,
 					notMappedProperties,
 					range: [node.getStart(), node.getEnd()],
-					componentRange: possibleComponents.get(componentName) ?? null,
+					componentRange:
+						possibleComponents.get(componentName)?.functionPosition ?? null,
+					parameterRange:
+						possibleComponents.get(componentName)?.parameterPosition ?? null,
+					defaultProps: componentDefaultProps.get(componentName) ?? null,
 				});
 			}
-		} else if (ts.isFunctionDeclaration(node)) {
-			const functionName = node.name?.getText();
-			if (functionName) {
-				possibleComponents.set(functionName, [
-					node.getStart(
-						sourceFile,
-						processingOptions.includeJSDocCommentInComponentPosition,
-					),
-					node.getEnd(),
-				]);
+		} else if (isExpressionWithName(node, 'defaultProps')) {
+			// found [ComponentName].defaultProps = {}
+			const componentName = node.expression.left.expression.getText();
+			if (ts.isObjectLiteralExpression(node.expression.right)) {
+				const defaultProps = new Map();
+				node.expression.right.properties.forEach((property) => {
+					const name = property.name?.getText();
+					let value: string | null = null;
+					if (!name) {
+						return;
+					}
+					if (ts.isPropertyAssignment(property)) {
+						value = property.initializer.getText();
+					}
+					defaultProps.set(name, value);
+				});
+				if (defaultProps.size > 0) {
+					componentDefaultProps.set(componentName, defaultProps);
+				}
 			}
+		} else if (ts.isFunctionDeclaration(node)) {
+			// found a potential function component
+			const functionName = node.name?.getText();
+			if (
+				functionName &&
+				functionName[0] === functionName[0].toLocaleUpperCase()
+			) {
+				possibleComponents.set(functionName, {
+					functionPosition: [
+						node.getStart(
+							sourceFile,
+							processingOptions.includeJSDocCommentInComponentPosition,
+						),
+						node.getEnd(),
+					],
+					parameterPosition: node.parameters[0]
+						? [node.parameters[0].getStart(), node.parameters[0].getEnd()]
+						: null,
+				});
+			}
+		}
+	});
+
+	// we may have picked up possibleComponents or componentDefaultProps after
+	// we parsed the component, so let's add any we missed...
+	possibleComponents.forEach((value, key) => {
+		const component = components.get(key);
+		if (component) {
+			component.componentRange = value.functionPosition;
+			component.parameterRange = value.parameterPosition;
+			components.set(key, component);
+		}
+	});
+
+	componentDefaultProps.forEach((value, key) => {
+		const component = components.get(key);
+		if (component) {
+			component.defaultProps = value;
+			components.set(key, component);
 		}
 	});
 
@@ -107,6 +163,28 @@ type PropertyDetailsResult =
 			required: boolean;
 	  }
 	| { status: 'notMatched'; propertyText: string };
+
+interface BinaryExpressionWithPropertyAccessExpression
+	extends ts.BinaryExpression {
+	left: ts.PropertyAccessExpression;
+}
+
+interface ExpressionStatementWithBinaryPropertyAccessExpression
+	extends ts.ExpressionStatement {
+	expression: BinaryExpressionWithPropertyAccessExpression;
+}
+
+function isExpressionWithName(
+	node: ts.Node,
+	name: string,
+): node is ExpressionStatementWithBinaryPropertyAccessExpression {
+	return (
+		ts.isExpressionStatement(node) &&
+		ts.isBinaryExpression(node.expression) &&
+		ts.isPropertyAccessExpression(node.expression.left) &&
+		node.expression.left.name.getText() === name
+	);
+}
 
 /**
  * Try to get details of what kind of PropType this property represents.
@@ -421,6 +499,41 @@ export function createTypeForComponent(
 	lines.push('}');
 
 	return lines.join('\n');
+}
+
+/** Create a props based on mapped types and default props */
+export function createPropsForComponent(
+	component: ComponentPropTypes,
+): string | null {
+	if (!component.defaultProps) {
+		return null;
+	}
+
+	const props = ['{'];
+	const propsWithValues = new Map<string, string | null>();
+
+	component.mappedProperties.forEach((value, key) => {
+		propsWithValues.set(key, null);
+	});
+
+	component.notMappedProperties.forEach((value, key) => {
+		propsWithValues.set(key, null);
+	});
+
+	component.defaultProps.forEach((value, key) => {
+		propsWithValues.set(key, value);
+	});
+
+	const sortedKeys = Array.from(propsWithValues.keys()).sort();
+
+	for (const key of sortedKeys) {
+		const value = propsWithValues.get(key) ?? null;
+		props.push(value ? `${key} = ${value},` : `${key},`);
+	}
+
+	props.push('}');
+
+	return props.join(' ');
 }
 
 export function createTypesForComponents(

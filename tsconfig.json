@@ -12,7 +12,8 @@
 		"skipLibCheck": true /* Skip type checking all .d.ts files. */,
 		"noUnusedLocals": true,
 		"outDir": "build",
-		"declaration": true
+		"declaration": true,
+		"resolveJsonModule": true
 	},
 	"include": ["src"],
 	"exclude": ["src/**/*.test.ts"]
