@@ -12,6 +12,7 @@ export type ComponentPropTypes = {
 	componentRange: [number, number] | null;
 	parameterRange: [number, number] | null;
 	defaultProps: Map<string, string> | null;
+	defaultPropsRange: [number, number] | null;
 };
 
 type ProcessSourceFileOptions = {
@@ -38,7 +39,10 @@ export function processSourceFile(
 	};
 	const d = baseDebugger.extend('processSourceFile');
 	const components = new Map<string, ComponentPropTypes>();
-	const componentDefaultProps = new Map<string, Map<string, string>>();
+	const componentDefaultProps = new Map<
+		string,
+		{ position: [number, number]; props: Map<string, string> }
+	>();
 	const possibleComponents = new Map<
 		string,
 		{
@@ -88,7 +92,9 @@ export function processSourceFile(
 						possibleComponents.get(componentName)?.functionPosition ?? null,
 					parameterRange:
 						possibleComponents.get(componentName)?.parameterPosition ?? null,
-					defaultProps: componentDefaultProps.get(componentName) ?? null,
+					defaultProps: componentDefaultProps.get(componentName)?.props ?? null,
+					defaultPropsRange:
+						componentDefaultProps.get(componentName)?.position ?? null,
 				});
 			}
 		} else if (isExpressionWithName(node, 'defaultProps')) {
@@ -108,7 +114,10 @@ export function processSourceFile(
 					defaultProps.set(name, value);
 				});
 				if (defaultProps.size > 0) {
-					componentDefaultProps.set(componentName, defaultProps);
+					componentDefaultProps.set(componentName, {
+						props: defaultProps,
+						position: [node.getStart(), node.getEnd()],
+					});
 				}
 			}
 		} else if (ts.isFunctionDeclaration(node)) {
@@ -148,7 +157,8 @@ export function processSourceFile(
 	componentDefaultProps.forEach((value, key) => {
 		const component = components.get(key);
 		if (component) {
-			component.defaultProps = value;
+			component.defaultProps = value.props;
+			component.defaultPropsRange = value.position;
 			components.set(key, component);
 		}
 	});

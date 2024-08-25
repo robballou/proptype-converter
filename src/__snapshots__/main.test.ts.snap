@@ -57,3 +57,15 @@ exports[`fixture 006: shape array 1`] = `
 }",
 ]
 `;
+
+exports[`fixture 008: defaultProps 1`] = `
+[
+  "type MyComponentProps = {
+	className: string;
+	optional?: string;
+	optionalFlag?: boolean;
+}",
+]
+`;
+
+exports[`fixture 008: defaultProps 2`] = `"{ className, optional = 'default', optionalFlag = true, }"`;

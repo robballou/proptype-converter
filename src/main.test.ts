@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { createTypesForComponents } from './main';
+import { createPropsForComponent, createTypesForComponents } from './main';
 import { processFile } from './file';
 import path from 'path';
 import fs from 'fs/promises';
@@ -146,5 +146,9 @@ test('fixture 008: defaultProps', async () => {
 
 	const component = result!.get('MyComponent')!;
 	expect(component.defaultProps).not.toBe(null);
+	expect(component.defaultPropsRange).not.toBe(null);
 	expect(component.defaultProps!.has('optional')).toBe(true);
+
+	expect(createTypesForComponents(result!)).toMatchSnapshot();
+	expect(createPropsForComponent(component)).toMatchSnapshot();
 });
