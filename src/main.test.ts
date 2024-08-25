@@ -136,3 +136,15 @@ test('fixture 007: jsdoc', async () => {
 	);
 	expect(text.startsWith('/**')).toBe(true);
 });
+
+test('fixture 008: defaultProps', async () => {
+	const result = await processFile(
+		path.resolve(__dirname, './fixtures/fixture008.js'),
+	);
+	expect(result).not.toBe(null);
+	expect(result!.has('MyComponent')).toBe(true);
+
+	const component = result!.get('MyComponent')!;
+	expect(component.defaultProps).not.toBe(null);
+	expect(component.defaultProps!.has('optional')).toBe(true);
+});

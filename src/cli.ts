@@ -1,6 +1,10 @@
 import { parseArgs } from 'node:util';
-import { createTypesForComponents } from './main';
+import { createPropsForComponent, createTypesForComponents } from './main';
 import { processFile } from './file';
+import * as packageDetails from '../package.json';
+import createDebugger from 'debug';
+
+const debug = createDebugger('proptype-converter:cli');
 
 function isFulfilled<T>(
 	p: PromiseSettledResult<T>,
@@ -19,10 +23,30 @@ async function main(args: string[]) {
 			help: {
 				type: 'boolean',
 				short: 'h',
+				default: false,
+			},
+			version: {
+				type: 'boolean',
+				short: 'v',
+				default: false,
+			},
+			noTypes: {
+				type: 'boolean',
+				short: 't',
+			},
+			props: {
+				type: 'boolean',
+				short: 'p',
+				default: false,
 			},
 		},
 		allowPositionals: true,
 	});
+
+	if (values.version) {
+		console.log(packageDetails.version);
+		return;
+	}
 
 	if (values.help || positionalArguments.length === 0) {
 		usage();
@@ -53,16 +77,34 @@ async function main(args: string[]) {
 		if (!fileResults) {
 			return;
 		}
-		createTypesForComponents(fileResults).forEach((typeResult) =>
-			console.log(typeResult),
-		);
+		debug('results for file', fileResults);
+
+		if (!values.noTypes) {
+			createTypesForComponents(fileResults).forEach((typeResult) =>
+				console.log(typeResult),
+			);
+		}
+
+		if (values.props) {
+			fileResults.forEach((value, key) => {
+				const propsValue = createPropsForComponent(value);
+				if (propsValue) {
+					console.log(`${propsValue}: ${key}Props`);
+				}
+			});
+		}
 	});
 
 	process.exit(status);
 }
 
 function usage() {
-	console.log(`Usage: ${__filename} [...files[]]`);
+	console.log(
+		`Usage: ${__filename} [--version|-v] [--noTypes|-t] [--props|-p] [...files[]]`,
+	);
+	console.log(`\t--noTypes, -t\tDo not output type information`);
+	console.log(`\t--version, -v\tOutput version`);
+	console.log(`\t--props, -p\tInclude props information`);
 }
 
 main(process.argv.slice(2));
