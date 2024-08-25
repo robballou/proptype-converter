@@ -1,5 +1,5 @@
 import * as ts from 'typescript';
-type ComponentPropTypes = {
+export type ComponentPropTypes = {
     mappedProperties: Map<string, {
         tsType: string;
         required: boolean;

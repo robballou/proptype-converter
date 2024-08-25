@@ -5,7 +5,7 @@ const baseDebugger = createDebugger('proptype-converter');
 const simplePropType =
 	/^PropTypes\.(string|bool|number|node|func)\.?(isRequired)?$/;
 
-type ComponentPropTypes = {
+export type ComponentPropTypes = {
 	mappedProperties: Map<string, { tsType: string; required: boolean }>;
 	notMappedProperties: Map<string, string>;
 	range: [number, number];
