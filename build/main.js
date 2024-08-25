@@ -92,7 +92,8 @@ function processSourceFile(sourceFile, options = {}) {
                     range: [node.getStart(), node.getEnd()],
                     componentRange: possibleComponents.get(componentName)?.functionPosition ?? null,
                     parameterRange: possibleComponents.get(componentName)?.parameterPosition ?? null,
-                    defaultProps: componentDefaultProps.get(componentName) ?? null,
+                    defaultProps: componentDefaultProps.get(componentName)?.props ?? null,
+                    defaultPropsRange: componentDefaultProps.get(componentName)?.position ?? null,
                 });
             }
         }
@@ -113,7 +114,10 @@ function processSourceFile(sourceFile, options = {}) {
                     defaultProps.set(name, value);
                 });
                 if (defaultProps.size > 0) {
-                    componentDefaultProps.set(componentName, defaultProps);
+                    componentDefaultProps.set(componentName, {
+                        props: defaultProps,
+                        position: [node.getStart(), node.getEnd()],
+                    });
                 }
             }
         }
@@ -147,7 +151,8 @@ function processSourceFile(sourceFile, options = {}) {
     componentDefaultProps.forEach((value, key) => {
         const component = components.get(key);
         if (component) {
-            component.defaultProps = value;
+            component.defaultProps = value.props;
+            component.defaultPropsRange = value.position;
             components.set(key, component);
         }
     });

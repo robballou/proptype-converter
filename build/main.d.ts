@@ -9,6 +9,7 @@ export type ComponentPropTypes = {
     componentRange: [number, number] | null;
     parameterRange: [number, number] | null;
     defaultProps: Map<string, string> | null;
+    defaultPropsRange: [number, number] | null;
 };
 type ProcessSourceFileOptions = {
     includeJSDocCommentInComponentPosition: boolean;
