@@ -160,7 +160,7 @@ function processSourceFile(sourceFile, options = {}) {
                     }
                     possibleComponents.set(functionName, {
                         functionPosition: [
-                            arrowFunction.initializer.getStart(sourceFile, processingOptions.includeJSDocCommentInComponentPosition),
+                            node.getStart(sourceFile, processingOptions.includeJSDocCommentInComponentPosition),
                             arrowFunction.initializer.getEnd(),
                         ],
                         parameterPosition,
