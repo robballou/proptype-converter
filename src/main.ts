@@ -172,7 +172,7 @@ export function processSourceFile(
 
 					possibleComponents.set(functionName, {
 						functionPosition: [
-							arrowFunction.initializer.getStart(
+							node.getStart(
 								sourceFile,
 								processingOptions.includeJSDocCommentInComponentPosition,
 							),

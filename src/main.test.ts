@@ -152,10 +152,11 @@ test('fixture 008: defaultProps', async () => {
 	expect(createTypesForComponents(result!)).toMatchSnapshot();
 	expect(createPropsForComponent(component)).toMatchSnapshot();
 });
+
 test('fixture 009: function expression defaultProps', async () => {
-	const result = await processFile(
-		path.resolve(__dirname, './fixtures/fixture009.js'),
-	);
+	const fixturePath = path.resolve(__dirname, './fixtures/fixture009.js');
+	const fixtureData = fs.readFile(fixturePath, 'utf-8');
+	const result = await processFile(fixturePath);
 	expect(result).not.toBe(null);
 	expect(result!.has('MyComponent')).toBe(true);
 
@@ -165,6 +166,12 @@ test('fixture 009: function expression defaultProps', async () => {
 	expect(component.defaultProps!.has('optional')).toBe(true);
 	expect(component.parameterRange).not.toBeNull();
 	expect(component.componentRange).not.toBeNull();
+
+	const text = (await fixtureData).substring(
+		component.componentRange![0],
+		component.componentRange![1],
+	);
+	expect(text.startsWith('const')).toBe(true);
 
 	expect(createTypesForComponents(result!)).toMatchSnapshot();
 	expect(createPropsForComponent(component)).toMatchSnapshot();
