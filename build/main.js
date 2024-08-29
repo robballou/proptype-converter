@@ -137,6 +137,37 @@ function processSourceFile(sourceFile, options = {}) {
                 });
             }
         }
+        else if (ts.isVariableStatement(node)) {
+            // possible function expression/arrow function
+            const arrowFunction = node.declarationList.declarations.find((declaration) => {
+                if (ts.isVariableDeclaration(declaration) &&
+                    declaration.initializer &&
+                    ts.isArrowFunction(declaration.initializer)) {
+                    return declaration;
+                }
+            });
+            // found an arrow function
+            if (arrowFunction) {
+                const functionName = arrowFunction.name.getText();
+                if (arrowFunction.initializer &&
+                    functionName[0] === functionName[0].toLocaleUpperCase()) {
+                    let parameterPosition = null;
+                    if (ts.isArrowFunction(arrowFunction.initializer)) {
+                        parameterPosition = [
+                            arrowFunction.initializer.parameters[0].getStart(),
+                            arrowFunction.initializer.parameters[0].getEnd(),
+                        ];
+                    }
+                    possibleComponents.set(functionName, {
+                        functionPosition: [
+                            arrowFunction.initializer.getStart(sourceFile, processingOptions.includeJSDocCommentInComponentPosition),
+                            arrowFunction.initializer.getEnd(),
+                        ],
+                        parameterPosition,
+                    });
+                }
+            }
+        }
     });
     // we may have picked up possibleComponents or componentDefaultProps after
     // we parsed the component, so let's add any we missed...
