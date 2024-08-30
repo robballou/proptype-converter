@@ -571,7 +571,6 @@ export function createTypeForComponent(
 	name: string,
 	component: ComponentPropTypes,
 ): string {
-	const d = baseDebugger.extend('createTypeForComponent');
 	const propsTypeName = `${name}Props`;
 	const lines = [`type ${propsTypeName} = {`];
 
