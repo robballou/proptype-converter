@@ -179,3 +179,17 @@ test('fixture 009: function expression defaultProps', async () => {
 	expect(createTypesForComponents(result!)).toMatchSnapshot();
 	expect(createPropsForComponent(component)).toMatchSnapshot();
 });
+
+test('fixture 010: function expression defaultProps', async () => {
+	const fixturePath = path.resolve(__dirname, './fixtures/fixture010.js');
+	const fixtureData = fs.readFile(fixturePath, 'utf-8');
+	const result = await processFile(fixturePath);
+	expect(result).not.toBe(null);
+	expect(result!.has('MyComponent')).toBe(true);
+
+	const component = result!.get('MyComponent')!;
+	const types = createTypesForComponents(result!);
+	const props = createPropsForComponent(component);
+
+	console.log(component);
+});

@@ -226,6 +226,7 @@ interface ExpressionStatementWithBinaryPropertyAccessExpression
 	expression: BinaryExpressionWithPropertyAccessExpression;
 }
 
+/** Predicate function to determine if a node like `MyComponent.propTypes` exists */
 function isExpressionWithName(
 	node: ts.Node,
 	name: string,
@@ -326,11 +327,13 @@ function createShapeType(
 function getObjectLiteralDetails(
 	node: ts.ObjectLiteralExpression,
 ): (string | null)[] {
+	const d = baseDebugger.extend('getObjectLiteralDetails');
 	return node.properties.map((argProperty) => {
 		const propertyName = argProperty.name?.getText();
 		if (!propertyName) {
 			return null;
 		}
+		d('found', propertyName);
 		if (
 			ts.isPropertyAssignment(argProperty) &&
 			ts.isPropertyAccessExpression(argProperty.initializer)
@@ -338,11 +341,9 @@ function getObjectLiteralDetails(
 			const result = getPropertyDetails(argProperty);
 			if (result.status === 'success') {
 				return `${propertyName}${result.required ? '' : '?'}: ${result.tsType}`;
-			} else {
-				return `${propertyName}: unknown // could not parse`;
 			}
 		}
-		return null;
+		return `${propertyName}: unknown // could not parse`;
 	});
 }
 
@@ -364,17 +365,20 @@ function getCallExpressionArgs(
 		const args = node.arguments
 			.map((argument) => {
 				if (ts.isArrayLiteralExpression(argument)) {
+					d('found ArrayLiteralExpression argument');
 					const arrayLiteral = argument.elements.map((element) => {
 						return element.getText();
 					});
 					return arrayLiteral;
 				} else if (ts.isObjectLiteralExpression(argument)) {
+					d('found ObjectLiteralExpression argument');
 					return getObjectLiteralDetails(argument);
 				} else if (
 					ts.isCallExpression(argument) &&
 					ts.isPropertyAccessExpression(argument.expression)
 				) {
 					const callType = argument.expression.name.getText();
+					d('found CallExpression argument', callType);
 					const nestedArgs = argument.arguments.map((nestedArg) => {
 						if (ts.isObjectLiteralExpression(nestedArg)) {
 							return getObjectLiteralDetails(nestedArg);
@@ -385,6 +389,8 @@ function getCallExpressionArgs(
 						callType,
 						args: nestedArgs,
 					};
+				} else {
+					d('unknown argument', argument);
 				}
 				return null;
 			})
@@ -394,6 +400,8 @@ function getCallExpressionArgs(
 			args,
 		});
 		return { callType, args };
+	} else {
+		d('Unknown node/expression', node);
 	}
 
 	return null;
@@ -594,7 +602,7 @@ function semiColonLine(line: string) {
 	if (line.includes('// ')) {
 		const [lineWithoutComment, comment] = line.split('//');
 		if (!lineWithoutComment.trim().endsWith(';')) {
-			return `${lineWithoutComment.trim()}; // ${comment}`;
+			return `${lineWithoutComment.trimEnd()}; // ${comment.trim()}`;
 		}
 		return line;
 	}
