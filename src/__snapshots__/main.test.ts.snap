@@ -85,3 +85,25 @@ exports[`fixture 009: function expression defaultProps 1`] = `
 `;
 
 exports[`fixture 009: function expression defaultProps 2`] = `"{ className, optional = 'default', optionalFlag = true, }"`;
+
+exports[`fixture 010: function expression defaultProps 1`] = `
+[
+  "type MyComponentProps = {
+	className: string;
+	item: {
+		numberProp?: number;
+		boolProp?: boolean;
+		expireDate?: Date;
+		folders?: {
+			id?: string;
+			name?: string;
+		}[];
+		isSelected: unknown; // could not parse
+		reviewStatus?: 'APPROVED' | 'PENDING' | 'REJECTED' | null;
+	};
+	onDrag?: CallableFunction;
+}",
+]
+`;
+
+exports[`fixture 010: function expression defaultProps 2`] = `"{ className, item, onDrag = () => { }, }"`;

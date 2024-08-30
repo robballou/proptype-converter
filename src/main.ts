@@ -1,5 +1,6 @@
 import * as ts from 'typescript';
 import createDebugger from 'debug';
+import { indentLines } from './lines';
 
 const baseDebugger = createDebugger('proptype-converter');
 const simplePropType =
@@ -226,6 +227,7 @@ interface ExpressionStatementWithBinaryPropertyAccessExpression
 	expression: BinaryExpressionWithPropertyAccessExpression;
 }
 
+/** Predicate function to determine if a node like `MyComponent.propTypes` exists */
 function isExpressionWithName(
 	node: ts.Node,
 	name: string,
@@ -303,17 +305,30 @@ function createShapeType(
 	args: ReturnType<typeof getCallExpressionArgs>,
 	required = false,
 ): PropertyDetailsResult {
+	const d = baseDebugger.extend('createShapeType');
 	if (!args) {
+		d('no args');
 		return {
 			status: 'notMatched',
 			propertyText: '',
 		};
 	}
 
-	const typeText = `{\n${args.args.map((arg) => `\t${arg}`).join('\n')}\n}`;
+	const typeText: string[] = ['{'];
+	args.args.forEach((thisArg) => {
+		if (Array.isArray(thisArg)) {
+			thisArg.forEach((subArg) => {
+				typeText.push(`\t${subArg}`);
+			});
+		} else {
+			typeText.push(`\t${thisArg}`);
+		}
+	});
+	typeText.push('}');
+
 	return {
 		status: 'success',
-		tsType: typeText,
+		tsType: typeText.join('\n'),
 		required,
 	};
 }
@@ -326,11 +341,13 @@ function createShapeType(
 function getObjectLiteralDetails(
 	node: ts.ObjectLiteralExpression,
 ): (string | null)[] {
+	const d = baseDebugger.extend('getObjectLiteralDetails');
 	return node.properties.map((argProperty) => {
 		const propertyName = argProperty.name?.getText();
 		if (!propertyName) {
 			return null;
 		}
+		d('found', propertyName);
 		if (
 			ts.isPropertyAssignment(argProperty) &&
 			ts.isPropertyAccessExpression(argProperty.initializer)
@@ -338,11 +355,18 @@ function getObjectLiteralDetails(
 			const result = getPropertyDetails(argProperty);
 			if (result.status === 'success') {
 				return `${propertyName}${result.required ? '' : '?'}: ${result.tsType}`;
-			} else {
-				return `${propertyName}: unknown // could not parse`;
+			}
+		} else if (
+			ts.isPropertyAssignment(argProperty) &&
+			ts.isCallExpression(argProperty.initializer)
+		) {
+			const result = getPropertyDetails(argProperty);
+			if (result.status === 'success') {
+				d('got result back', result);
+				return `${propertyName}${result.required ? '' : '?'}: ${result.tsType}`;
 			}
 		}
-		return null;
+		return `${propertyName}: unknown // could not parse`;
 	});
 }
 
@@ -364,20 +388,25 @@ function getCallExpressionArgs(
 		const args = node.arguments
 			.map((argument) => {
 				if (ts.isArrayLiteralExpression(argument)) {
+					d('found ArrayLiteralExpression argument');
 					const arrayLiteral = argument.elements.map((element) => {
 						return element.getText();
 					});
 					return arrayLiteral;
 				} else if (ts.isObjectLiteralExpression(argument)) {
+					d('found ObjectLiteralExpression argument');
 					return getObjectLiteralDetails(argument);
 				} else if (
 					ts.isCallExpression(argument) &&
 					ts.isPropertyAccessExpression(argument.expression)
 				) {
 					const callType = argument.expression.name.getText();
+					d('found CallExpression argument', callType);
 					const nestedArgs = argument.arguments.map((nestedArg) => {
 						if (ts.isObjectLiteralExpression(nestedArg)) {
 							return getObjectLiteralDetails(nestedArg);
+						} else if (ts.isIdentifier(nestedArg)) {
+							return nestedArg.getText();
 						}
 						return null;
 					});
@@ -385,6 +414,12 @@ function getCallExpressionArgs(
 						callType,
 						args: nestedArgs,
 					};
+				} else if (ts.isIdentifier(argument)) {
+					return argument.getText();
+				} else {
+					d('unknown argument', {
+						argument,
+					});
 				}
 				return null;
 			})
@@ -394,6 +429,8 @@ function getCallExpressionArgs(
 			args,
 		});
 		return { callType, args };
+	} else {
+		d('Unknown node/expression', node);
 	}
 
 	return null;
@@ -439,6 +476,13 @@ function getCallPropertyDetails(
 				return {
 					status: 'success',
 					tsType: `${types.join(' ')}[]`,
+					required: false,
+				};
+			} else if (callType === 'instanceOf') {
+				d('instanceOf', args);
+				return {
+					status: 'success',
+					tsType: Array.isArray(args) ? args.join(' | ') : args,
 					required: false,
 				};
 			}
@@ -527,6 +571,7 @@ export function createTypeForComponent(
 	name: string,
 	component: ComponentPropTypes,
 ): string {
+	const d = baseDebugger.extend('createTypeForComponent');
 	const propsTypeName = `${name}Props`;
 	const lines = [`type ${propsTypeName} = {`];
 
@@ -554,7 +599,9 @@ export function createTypeForComponent(
 }
 
 /** Create a props based on mapped types and default props (if available) */
-export function createPropsForComponent(component: ComponentPropTypes): string | null {
+export function createPropsForComponent(
+	component: ComponentPropTypes,
+): string | null {
 	const props = ['{'];
 	const propsWithValues = new Map<string, string | null>();
 
@@ -587,46 +634,6 @@ export function createTypesForComponents(
 ): string[] {
 	return Array.from(components ?? []).map(([name, component]) => {
 		return createTypeForComponent(name, component);
-	});
-}
-
-function semiColonLine(line: string) {
-	if (line.includes('// ')) {
-		const [lineWithoutComment, comment] = line.split('//');
-		if (!lineWithoutComment.trim().endsWith(';')) {
-			return `${lineWithoutComment.trim()}; // ${comment}`;
-		}
-		return line;
-	}
-	if (!line.endsWith(';')) {
-		return `${line};`;
-	}
-	return line;
-}
-
-function indentLines(lines: string[], indentLevel = 1): string[] {
-	return lines.map((line) => {
-		// a line is a string that may contain its own line breaks and we want
-		// to indent those lines-within-a-line...
-		let expandedLine = line.split('\n');
-
-		if (expandedLine.length > 1) {
-			// nested shape, we need to indent the last line and intent the middle lines by +1
-			if (
-				expandedLine[0] === '{' &&
-				expandedLine[expandedLine.length - 1].startsWith('}')
-			) {
-				expandedLine = expandedLine.map((nestedLine, index) => {
-					if (index === 0) {
-						return nestedLine;
-					}
-					let modifiedLine = semiColonLine(`\t${nestedLine}`);
-					return modifiedLine;
-				});
-			}
-			return expandedLine.join('\n');
-		}
-		return semiColonLine(line);
 	});
 }
 
