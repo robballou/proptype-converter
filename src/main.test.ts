@@ -191,5 +191,6 @@ test('fixture 010: function expression defaultProps', async () => {
 	const types = createTypesForComponents(result!);
 	const props = createPropsForComponent(component);
 
-	console.log(component);
+	expect(createTypesForComponents(result!)).toMatchSnapshot();
+	expect(createPropsForComponent(component)).toMatchSnapshot();
 });

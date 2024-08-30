@@ -1,24 +1,24 @@
 import { expect, test } from 'vitest';
-import { indentLines } from './lines';
+import { getIndentLevel, indentLines } from './lines';
 
 test('indentLines with nested structure', () => {
 	const testString = 'folders?: {\n\tid?: string,name?: string\n}[]';
 	const lines = indentLines([testString]);
 	const firstLine = lines.shift();
 	const firstLineExpanded = firstLine?.split('\n');
-	expect(firstLineExpanded![0].startsWith('\t')).toBe(false);
+	expect(getIndentLevel(firstLineExpanded![0])).toBe(0);
 	expect(
-		firstLineExpanded![firstLineExpanded!.length - 1].startsWith('\t'),
-	).toBe(false);
+		getIndentLevel(firstLineExpanded![firstLineExpanded!.length - 1]),
+	).toBe(1);
 });
 
-test('indentLines with nested structure in ', () => {
+test('indentLines with nested structure while already indented', () => {
 	const testString = '\tfolders?: {\n\tid?: string,name?: string\n}[]';
 	const lines = indentLines([testString]);
 	const firstLine = lines.shift();
 	const firstLineExpanded = firstLine?.split('\n');
-	expect(firstLineExpanded![0].startsWith('\t')).toBe(true);
+	expect(getIndentLevel(firstLineExpanded![0])).toBe(1);
 	expect(
-		firstLineExpanded![firstLineExpanded!.length - 1].startsWith('\t'),
-	).toBe(true);
+		getIndentLevel(firstLineExpanded![firstLineExpanded!.length - 1]),
+	).toBe(2);
 });

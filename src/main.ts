@@ -1,6 +1,6 @@
 import * as ts from 'typescript';
 import createDebugger from 'debug';
-import { indentLines, semiColonLine } from './lines';
+import { indentLines } from './lines';
 
 const baseDebugger = createDebugger('proptype-converter');
 const simplePropType =
@@ -405,6 +405,8 @@ function getCallExpressionArgs(
 					const nestedArgs = argument.arguments.map((nestedArg) => {
 						if (ts.isObjectLiteralExpression(nestedArg)) {
 							return getObjectLiteralDetails(nestedArg);
+						} else if (ts.isIdentifier(nestedArg)) {
+							return nestedArg.getText();
 						}
 						return null;
 					});
@@ -412,8 +414,12 @@ function getCallExpressionArgs(
 						callType,
 						args: nestedArgs,
 					};
+				} else if (ts.isIdentifier(argument)) {
+					return argument.getText();
 				} else {
-					d('unknown argument', argument);
+					d('unknown argument', {
+						argument,
+					});
 				}
 				return null;
 			})
@@ -470,6 +476,13 @@ function getCallPropertyDetails(
 				return {
 					status: 'success',
 					tsType: `${types.join(' ')}[]`,
+					required: false,
+				};
+			} else if (callType === 'instanceOf') {
+				d('instanceOf', args);
+				return {
+					status: 'success',
+					tsType: Array.isArray(args) ? args.join(' | ') : args,
 					required: false,
 				};
 			}
@@ -558,6 +571,7 @@ export function createTypeForComponent(
 	name: string,
 	component: ComponentPropTypes,
 ): string {
+	const d = baseDebugger.extend('createTypeForComponent');
 	const propsTypeName = `${name}Props`;
 	const lines = [`type ${propsTypeName} = {`];
 
