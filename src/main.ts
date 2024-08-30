@@ -1,5 +1,6 @@
 import * as ts from 'typescript';
 import createDebugger from 'debug';
+import { indentLines, semiColonLine } from './lines';
 
 const baseDebugger = createDebugger('proptype-converter');
 const simplePropType =
@@ -304,17 +305,30 @@ function createShapeType(
 	args: ReturnType<typeof getCallExpressionArgs>,
 	required = false,
 ): PropertyDetailsResult {
+	const d = baseDebugger.extend('createShapeType');
 	if (!args) {
+		d('no args');
 		return {
 			status: 'notMatched',
 			propertyText: '',
 		};
 	}
 
-	const typeText = `{\n${args.args.map((arg) => `\t${arg}`).join('\n')}\n}`;
+	const typeText: string[] = ['{'];
+	args.args.forEach((thisArg) => {
+		if (Array.isArray(thisArg)) {
+			thisArg.forEach((subArg) => {
+				typeText.push(`\t${subArg}`);
+			});
+		} else {
+			typeText.push(`\t${thisArg}`);
+		}
+	});
+	typeText.push('}');
+
 	return {
 		status: 'success',
-		tsType: typeText,
+		tsType: typeText.join('\n'),
 		required,
 	};
 }
@@ -340,6 +354,15 @@ function getObjectLiteralDetails(
 		) {
 			const result = getPropertyDetails(argProperty);
 			if (result.status === 'success') {
+				return `${propertyName}${result.required ? '' : '?'}: ${result.tsType}`;
+			}
+		} else if (
+			ts.isPropertyAssignment(argProperty) &&
+			ts.isCallExpression(argProperty.initializer)
+		) {
+			const result = getPropertyDetails(argProperty);
+			if (result.status === 'success') {
+				d('got result back', result);
 				return `${propertyName}${result.required ? '' : '?'}: ${result.tsType}`;
 			}
 		}
@@ -562,7 +585,9 @@ export function createTypeForComponent(
 }
 
 /** Create a props based on mapped types and default props (if available) */
-export function createPropsForComponent(component: ComponentPropTypes): string | null {
+export function createPropsForComponent(
+	component: ComponentPropTypes,
+): string | null {
 	const props = ['{'];
 	const propsWithValues = new Map<string, string | null>();
 
@@ -595,46 +620,6 @@ export function createTypesForComponents(
 ): string[] {
 	return Array.from(components ?? []).map(([name, component]) => {
 		return createTypeForComponent(name, component);
-	});
-}
-
-function semiColonLine(line: string) {
-	if (line.includes('// ')) {
-		const [lineWithoutComment, comment] = line.split('//');
-		if (!lineWithoutComment.trim().endsWith(';')) {
-			return `${lineWithoutComment.trimEnd()}; // ${comment.trim()}`;
-		}
-		return line;
-	}
-	if (!line.endsWith(';')) {
-		return `${line};`;
-	}
-	return line;
-}
-
-function indentLines(lines: string[], indentLevel = 1): string[] {
-	return lines.map((line) => {
-		// a line is a string that may contain its own line breaks and we want
-		// to indent those lines-within-a-line...
-		let expandedLine = line.split('\n');
-
-		if (expandedLine.length > 1) {
-			// nested shape, we need to indent the last line and intent the middle lines by +1
-			if (
-				expandedLine[0] === '{' &&
-				expandedLine[expandedLine.length - 1].startsWith('}')
-			) {
-				expandedLine = expandedLine.map((nestedLine, index) => {
-					if (index === 0) {
-						return nestedLine;
-					}
-					let modifiedLine = semiColonLine(`\t${nestedLine}`);
-					return modifiedLine;
-				});
-			}
-			return expandedLine.join('\n');
-		}
-		return semiColonLine(line);
 	});
 }
 
