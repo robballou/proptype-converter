@@ -553,14 +553,8 @@ export function createTypeForComponent(
 	return lines.join('\n');
 }
 
-/** Create a props based on mapped types and default props */
-export function createPropsForComponent(
-	component: ComponentPropTypes,
-): string | null {
-	if (!component.defaultProps) {
-		return null;
-	}
-
+/** Create a props based on mapped types and default props (if available) */
+export function createPropsForComponent(component: ComponentPropTypes): string | null {
 	const props = ['{'];
 	const propsWithValues = new Map<string, string | null>();
 
@@ -572,7 +566,7 @@ export function createPropsForComponent(
 		propsWithValues.set(key, null);
 	});
 
-	component.defaultProps.forEach((value, key) => {
+	component.defaultProps?.forEach((value, key) => {
 		propsWithValues.set(key, value);
 	});
 

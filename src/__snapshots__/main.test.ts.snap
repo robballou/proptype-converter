@@ -58,6 +58,10 @@ exports[`fixture 006: shape array 1`] = `
 ]
 `;
 
+exports[`fixture 006: shape array 2`] = `"{ someObject, }"`;
+
+exports[`fixture 007: jsdoc 1`] = `"{ className, }"`;
+
 exports[`fixture 008: defaultProps 1`] = `
 [
   "type MyComponentProps = {

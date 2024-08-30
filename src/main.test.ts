@@ -123,6 +123,7 @@ test('fixture 006: shape array', async () => {
 	expect(someObject.required).toBe(false);
 
 	expect(createTypesForComponents(result!)).toMatchSnapshot();
+	expect(createPropsForComponent(component!)).toMatchSnapshot();
 });
 
 test('fixture 007: jsdoc', async () => {
@@ -135,6 +136,8 @@ test('fixture 007: jsdoc', async () => {
 		component!.componentRange![1],
 	);
 	expect(text.startsWith('/**')).toBe(true);
+	expect(createPropsForComponent(component!)).not.toBeNull();
+	expect(createPropsForComponent(component!)).toMatchSnapshot();
 });
 
 test('fixture 008: defaultProps', async () => {
