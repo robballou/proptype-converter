@@ -453,11 +453,8 @@ function createTypeForComponent(name, component) {
     lines.push('}');
     return lines.join('\n');
 }
-/** Create a props based on mapped types and default props */
+/** Create a props based on mapped types and default props (if available) */
 function createPropsForComponent(component) {
-    if (!component.defaultProps) {
-        return null;
-    }
     const props = ['{'];
     const propsWithValues = new Map();
     component.mappedProperties.forEach((value, key) => {
@@ -466,7 +463,7 @@ function createPropsForComponent(component) {
     component.notMappedProperties.forEach((value, key) => {
         propsWithValues.set(key, null);
     });
-    component.defaultProps.forEach((value, key) => {
+    component.defaultProps?.forEach((value, key) => {
         propsWithValues.set(key, value);
     });
     const sortedKeys = Array.from(propsWithValues.keys()).sort();

@@ -22,7 +22,7 @@ type ProcessSourceFileOptions = {
  */
 export declare function processSourceFile(sourceFile: ts.SourceFile, options?: Partial<ProcessSourceFileOptions>): Map<string, ComponentPropTypes>;
 export declare function createTypeForComponent(name: string, component: ComponentPropTypes): string;
-/** Create a props based on mapped types and default props */
+/** Create a props based on mapped types and default props (if available) */
 export declare function createPropsForComponent(component: ComponentPropTypes): string | null;
 export declare function createTypesForComponents(components: Awaited<ReturnType<typeof processSourceFile>>): string[];
 export {};
