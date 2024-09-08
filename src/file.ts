@@ -10,6 +10,7 @@ const baseDebugger = createDebugger('proptype-converter:file');
  */
 export async function processFile(
 	fileName: string,
+	options: Parameters<typeof processSourceFile>[1] = {},
 ): Promise<Awaited<ReturnType<typeof processSourceFile>> | null> {
 	const d = baseDebugger.extend('processFile');
 
@@ -28,5 +29,5 @@ export async function processFile(
 		return null;
 	}
 
-	return await processSourceFile(sourceFile);
+	return await processSourceFile(sourceFile, options);
 }

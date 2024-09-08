@@ -1,27 +1,53 @@
 import * as ts from 'typescript';
 import createDebugger from 'debug';
 import { indentLines } from './lines';
+import {
+	ArrowFunctionDeclaration,
+	isArrowFunction,
+	isCallExpressionWithPropertyAccess,
+	isExpressionWithName,
+} from './parserHelpers';
 
 const baseDebugger = createDebugger('proptype-converter');
+
+/** For very simple prop types, save some time and just regex it */
 const simplePropType =
 	/^PropTypes\.(string|bool|number|node|func)\.?(isRequired)?$/;
 
+/** Tuple that indicates place within a source file/string */
+type Position = [number, number];
+
 export type ComponentPropTypes = {
+	/** Properties that were parsed and have a TypeScript type */
 	mappedProperties: Map<string, { tsType: string; required: boolean }>;
+	/** Properties that were not parsed and we don't know what they are... */
 	notMappedProperties: Map<string, string>;
-	range: [number, number];
-	componentRange: [number, number] | null;
-	parameterRange: [number, number] | null;
-	defaultProps: Map<string, string> | null;
-	defaultPropsRange: [number, number] | null;
+	/** Position of the entire `propTypes` definition */
+	range: Position;
+	/** Position of the entire React component, if found */
+	componentRange: Position | null;
+	/** Position of the arguments for the React component, if found */
+	parameterRange: Position | null;
+	/** The defined `defaultProps` for this component if any */
+	defaultProps: Map<string, string | null> | null;
+	/** The position of the `defaultProps` definition in the file */
+	defaultPropsRange: Position | null;
 };
 
 type ProcessSourceFileOptions = {
+	/** Include the JSDoc comment position when figuring out function component position */
 	includeJSDocCommentInComponentPosition: boolean;
+
+	/**
+	 * When creating props for a React Component, include ones found in the function's arguments
+	 * that are not in the `propTypes` or `defaultProps`.
+	 */
+	includeUnknownFunctionArgumentProps: boolean;
 };
 
 const defaultProcessSourceFileOptions: ProcessSourceFileOptions = {
 	includeJSDocCommentInComponentPosition: true,
+	includeUnknownFunctionArgumentProps: false,
 };
 
 /**
@@ -39,81 +65,57 @@ export function processSourceFile(
 		...options,
 	};
 	const d = baseDebugger.extend('processSourceFile');
+
+	/** Map of components and their `propTypes` */
 	const components = new Map<string, ComponentPropTypes>();
+
+	/** Map of `defaultProps` by component name. */
 	const componentDefaultProps = new Map<
 		string,
-		{ position: [number, number]; props: Map<string, string> }
+		{ position: [number, number]; props: Map<string, string | null> }
 	>();
+
+	/**
+	 * Map of functions that might be a React component that will be referenced later by `propTypes` or `defaultProps`
+	 */
 	const possibleComponents = new Map<
 		string,
 		{
-			functionPosition: [number, number];
-			parameterPosition: [number, number] | null;
+			functionPosition: Position;
+			functionPropArguments: Map<string, unknown>;
+			parameterPosition: Position | null;
 		}
 	>();
+
 	ts.forEachChild(sourceFile, (node) => {
 		// find [Component].propTypes
 		if (isExpressionWithName(node, 'propTypes')) {
 			const componentName = node.expression.left.expression.getText();
 			d('found PropTypes for component', componentName);
 			if (ts.isObjectLiteralExpression(node.expression.right)) {
-				const mappedProperties = new Map();
-				const notMappedProperties = new Map();
-				node.expression.right.properties.forEach((property) => {
-					const name = property.name?.getText();
-					if (!name) {
-						return;
-					}
-					let tsType = null;
-					let required = false;
-					if (ts.isPropertyAssignment(property)) {
-						// check if this is a simple PropType that we can match via
-						// a simple regex rather than parsing.
-						const result = getPropertyDetails(property);
-						if (result.status === 'success') {
-							tsType = result.tsType;
-							required = result.required;
-						} else {
-							// could not match property
-						}
-					}
+				const { mappedProperties, notMappedProperties } =
+					processPropTypeProperties(node.expression.right.properties);
 
-					if (tsType) {
-						mappedProperties.set(name, { tsType, required });
-					} else {
-						notMappedProperties.set(name, property.getFullText());
-					}
-				});
+				const possibleComponent = possibleComponents.get(componentName);
+				const defaultProps = componentDefaultProps.get(componentName);
 
 				components.set(componentName, {
 					mappedProperties,
 					notMappedProperties,
 					range: [node.getStart(), node.getEnd()],
-					componentRange:
-						possibleComponents.get(componentName)?.functionPosition ?? null,
-					parameterRange:
-						possibleComponents.get(componentName)?.parameterPosition ?? null,
-					defaultProps: componentDefaultProps.get(componentName)?.props ?? null,
-					defaultPropsRange:
-						componentDefaultProps.get(componentName)?.position ?? null,
+					componentRange: possibleComponent?.functionPosition ?? null,
+					parameterRange: possibleComponent?.parameterPosition ?? null,
+					defaultProps: defaultProps?.props ?? null,
+					defaultPropsRange: defaultProps?.position ?? null,
 				});
 			}
 		} else if (isExpressionWithName(node, 'defaultProps')) {
 			// found [ComponentName].defaultProps = {}
 			const componentName = node.expression.left.expression.getText();
 			if (ts.isObjectLiteralExpression(node.expression.right)) {
-				const defaultProps = new Map();
-				node.expression.right.properties.forEach((property) => {
-					const name = property.name?.getText();
-					let value: string | null = null;
-					if (!name) {
-						return;
-					}
-					if (ts.isPropertyAssignment(property)) {
-						value = property.initializer.getText();
-					}
-					defaultProps.set(name, value);
-				});
+				const defaultProps = processDefaultProps(
+					node.expression.right.properties,
+				);
 				if (defaultProps.size > 0) {
 					componentDefaultProps.set(componentName, {
 						props: defaultProps,
@@ -122,64 +124,37 @@ export function processSourceFile(
 				}
 			}
 		} else if (ts.isFunctionDeclaration(node)) {
-			// found a potential function component
-			const functionName = node.name?.getText();
-			if (
-				functionName &&
-				functionName[0] === functionName[0].toLocaleUpperCase()
-			) {
-				possibleComponents.set(functionName, {
-					functionPosition: [
-						node.getStart(
-							sourceFile,
-							processingOptions.includeJSDocCommentInComponentPosition,
-						),
-						node.getEnd(),
-					],
-					parameterPosition: node.parameters[0]
-						? [node.parameters[0].getStart(), node.parameters[0].getEnd()]
-						: null,
+			const result = processFunctionDeclarationForReactComponent(
+				node,
+				sourceFile,
+				processingOptions,
+			);
+
+			if (result) {
+				possibleComponents.set(result.functionName, {
+					functionPosition: result.functionPosition,
+					parameterPosition: result.parameterPosition,
+					functionPropArguments: result.functionPropArguments,
 				});
 			}
 		} else if (ts.isVariableStatement(node)) {
 			// possible function expression/arrow function
-			const arrowFunction = node.declarationList.declarations.find(
-				(declaration) => {
-					if (
-						ts.isVariableDeclaration(declaration) &&
-						declaration.initializer &&
-						ts.isArrowFunction(declaration.initializer)
-					) {
-						return declaration;
-					}
-				},
-			);
+			const arrowFunction =
+				node.declarationList.declarations.find(isArrowFunction) ?? null;
 
 			// found an arrow function
 			if (arrowFunction) {
-				const functionName = arrowFunction.name.getText();
-				if (
-					arrowFunction.initializer &&
-					functionName[0] === functionName[0].toLocaleUpperCase()
-				) {
-					let parameterPosition: [number, number] | null = null;
-
-					if (ts.isArrowFunction(arrowFunction.initializer)) {
-						parameterPosition = [
-							arrowFunction.initializer.parameters[0].getStart(),
-							arrowFunction.initializer.parameters[0].getEnd(),
-						];
-					}
-
-					possibleComponents.set(functionName, {
-						functionPosition: [
-							node.getStart(
-								sourceFile,
-								processingOptions.includeJSDocCommentInComponentPosition,
-							),
-							arrowFunction.initializer.getEnd(),
-						],
-						parameterPosition,
+				const result = processArrowFunctionForReactComponent(
+					arrowFunction,
+					node,
+					sourceFile,
+					processingOptions,
+				);
+				if (result) {
+					possibleComponents.set(result.functionName, {
+						functionPosition: result.functionPosition,
+						functionPropArguments: result.functionPropArguments,
+						parameterPosition: result.parameterPosition,
 					});
 				}
 			}
@@ -188,12 +163,38 @@ export function processSourceFile(
 
 	// we may have picked up possibleComponents or componentDefaultProps after
 	// we parsed the component, so let's add any we missed...
-	possibleComponents.forEach((value, key) => {
+	possibleComponents.forEach((possibleComponent, key) => {
 		const component = components.get(key);
 		if (component) {
-			component.componentRange = value.functionPosition;
-			component.parameterRange = value.parameterPosition;
+			component.componentRange = possibleComponent.functionPosition;
+			component.parameterRange = possibleComponent.parameterPosition;
 			components.set(key, component);
+
+			if (
+				possibleComponent.functionPropArguments.size > 0 &&
+				processingOptions.includeUnknownFunctionArgumentProps
+			) {
+				// check if there are any props we haven't found in parsing the component's
+				// defaultProps/propTypes
+				possibleComponent.functionPropArguments.forEach(
+					(defaultValue, argumentName) => {
+						if (
+							!component.mappedProperties.has(argumentName) &&
+							!component.notMappedProperties.has(argumentName)
+						) {
+							d(
+								'Found unknown prop argument, adding to notMappedProperties',
+								argumentName,
+								defaultValue,
+							);
+							component.notMappedProperties.set(
+								argumentName,
+								defaultValue ? `${defaultValue}` : '',
+							);
+						}
+					},
+				);
+			}
 		}
 	});
 
@@ -209,6 +210,184 @@ export function processSourceFile(
 	return components;
 }
 
+function functionNameStartsWithCapitalLetter(functionName: string) {
+	return functionName[0] === functionName[0].toLocaleUpperCase();
+}
+
+function processDefaultProps(
+	properties: ts.NodeArray<ts.ObjectLiteralElementLike>,
+) {
+	const defaultProps = new Map<string, string | null>();
+	properties.forEach((property) => {
+		const name = property.name?.getText();
+		let value: string | null = null;
+		if (!name) {
+			return;
+		}
+		if (ts.isPropertyAssignment(property)) {
+			value = property.initializer.getText();
+		}
+		defaultProps.set(name, value);
+	});
+	return defaultProps;
+}
+
+function processArrowFunctionForReactComponent(
+	arrowFunction: ArrowFunctionDeclaration,
+	parentNode: ts.Node,
+	sourceFile: ts.SourceFile,
+	processingOptions: ProcessSourceFileOptions,
+): {
+	functionName: string;
+	functionPosition: Position;
+	parameterPosition: Position | null;
+	functionPropArguments: Map<string, unknown>;
+} | null {
+	const functionName = arrowFunction.name.getText();
+	if (functionNameStartsWithCapitalLetter(functionName)) {
+		let parameterPosition: Position | null = null;
+		const functionPropArguments = new Map<string, unknown>();
+
+		if (
+			ts.isArrowFunction(arrowFunction.initializer) &&
+			arrowFunction.initializer.parameters.length > 0
+		) {
+			const firstParameter = arrowFunction.initializer.parameters[0];
+			parameterPosition = [firstParameter.getStart(), firstParameter.getEnd()];
+			const firstParameterPropArguments =
+				processFirstArgumentForPropArguments(firstParameter);
+			if (firstParameterPropArguments.size) {
+				firstParameterPropArguments.forEach((value, key) =>
+					functionPropArguments.set(key, value),
+				);
+			}
+		}
+
+		return {
+			functionName,
+			functionPosition: [
+				parentNode.getStart(
+					sourceFile,
+					processingOptions.includeJSDocCommentInComponentPosition,
+				),
+				arrowFunction.initializer.getEnd(),
+			],
+			functionPropArguments,
+			parameterPosition,
+		};
+	}
+
+	return null;
+}
+
+/** Found a function declaration that could be a React component. */
+function processFunctionDeclarationForReactComponent(
+	node: ts.FunctionDeclaration,
+	sourceFile: ts.SourceFile,
+	processingOptions: ProcessSourceFileOptions,
+): {
+	functionName: string;
+	functionPosition: Position;
+	parameterPosition: Position | null;
+	functionPropArguments: Map<string, unknown>;
+} | null {
+	const d = baseDebugger.extend('processFunctionDeclarationForReactComponent');
+	// found a potential function component
+	const functionName = node.name?.getText();
+
+	// check that the first letter is a capital letter
+	if (functionName && functionNameStartsWithCapitalLetter(functionName)) {
+		d(
+			'Found possible React functional component. Function arguments',
+			functionName,
+		);
+
+		let parameterPosition: Position | null = null;
+		const functionPropArguments = new Map<string, unknown>();
+
+		if (node.parameters.length > 0) {
+			const firstParameter = node.parameters[0];
+			parameterPosition = [firstParameter.getStart(), firstParameter.getEnd()];
+			const firstParameterPropArguments =
+				processFirstArgumentForPropArguments(firstParameter);
+			if (firstParameterPropArguments.size) {
+				firstParameterPropArguments.forEach((value, key) =>
+					functionPropArguments.set(key, value),
+				);
+			}
+		}
+
+		return {
+			functionName,
+			functionPosition: [
+				node.getStart(
+					sourceFile,
+					processingOptions.includeJSDocCommentInComponentPosition,
+				),
+				node.getEnd(),
+			],
+			parameterPosition,
+			functionPropArguments,
+		};
+	}
+
+	return null;
+}
+
+function processFirstArgumentForPropArguments(
+	firstParameter: ts.ParameterDeclaration,
+) {
+	const functionPropArguments = new Map<string, unknown>();
+
+	if (ts.isObjectBindingPattern(firstParameter.name)) {
+		const d = baseDebugger.extend(
+			'processFunctionDeclarationForReactComponent',
+		);
+		firstParameter.name.elements.forEach((element) => {
+			d('found argument prop', element.name.getText());
+			functionPropArguments.set(
+				element.name.getText(),
+				element.initializer?.getText() ?? null,
+			);
+		});
+	}
+
+	return functionPropArguments;
+}
+
+function processPropTypeProperties(
+	properties: ts.NodeArray<ts.ObjectLiteralElementLike>,
+) {
+	const mappedProperties = new Map();
+	const notMappedProperties = new Map();
+	properties.forEach((property) => {
+		const name = property.name?.getText();
+		if (!name) {
+			return;
+		}
+		let tsType = null;
+		let required = false;
+		if (ts.isPropertyAssignment(property)) {
+			// check if this is a simple PropType that we can match via
+			// a simple regex rather than parsing.
+			const result = getPropertyDetails(property);
+			if (result.status === 'success') {
+				tsType = result.tsType;
+				required = result.required;
+			} else {
+				// could not match property
+			}
+		}
+
+		if (tsType) {
+			mappedProperties.set(name, { tsType, required });
+		} else {
+			notMappedProperties.set(name, property.getFullText());
+		}
+	});
+	return { mappedProperties, notMappedProperties };
+}
+
 type PropertyDetailsResult =
 	| {
 			status: 'success';
@@ -216,29 +395,6 @@ type PropertyDetailsResult =
 			required: boolean;
 	  }
 	| { status: 'notMatched'; propertyText: string };
-
-interface BinaryExpressionWithPropertyAccessExpression
-	extends ts.BinaryExpression {
-	left: ts.PropertyAccessExpression;
-}
-
-interface ExpressionStatementWithBinaryPropertyAccessExpression
-	extends ts.ExpressionStatement {
-	expression: BinaryExpressionWithPropertyAccessExpression;
-}
-
-/** Predicate function to determine if a node like `MyComponent.propTypes` exists */
-function isExpressionWithName(
-	node: ts.Node,
-	name: string,
-): node is ExpressionStatementWithBinaryPropertyAccessExpression {
-	return (
-		ts.isExpressionStatement(node) &&
-		ts.isBinaryExpression(node.expression) &&
-		ts.isPropertyAccessExpression(node.expression.left) &&
-		node.expression.left.name.getText() === name
-	);
-}
 
 /**
  * Try to get details of what kind of PropType this property represents.
@@ -302,11 +458,11 @@ function createOneOfType(
  * Convert a `shape` PropType to its correlated Type.
  */
 function createShapeType(
-	args: ReturnType<typeof getCallExpressionArgs>,
+	shape: ReturnType<typeof getCallExpressionArgs>,
 	required = false,
 ): PropertyDetailsResult {
 	const d = baseDebugger.extend('createShapeType');
-	if (!args) {
+	if (!shape) {
 		d('no args');
 		return {
 			status: 'notMatched',
@@ -314,8 +470,9 @@ function createShapeType(
 		};
 	}
 
+	// create the shape's type
 	const typeText: string[] = ['{'];
-	args.args.forEach((thisArg) => {
+	shape.args.forEach((thisArg) => {
 		if (Array.isArray(thisArg)) {
 			thisArg.forEach((subArg) => {
 				typeText.push(`\t${subArg}`);
@@ -396,10 +553,7 @@ function getCallExpressionArgs(
 				} else if (ts.isObjectLiteralExpression(argument)) {
 					d('found ObjectLiteralExpression argument');
 					return getObjectLiteralDetails(argument);
-				} else if (
-					ts.isCallExpression(argument) &&
-					ts.isPropertyAccessExpression(argument.expression)
-				) {
+				} else if (isCallExpressionWithPropertyAccess(argument)) {
 					const callType = argument.expression.name.getText();
 					d('found CallExpression argument', callType);
 					const nestedArgs = argument.arguments.map((nestedArg) => {
@@ -442,10 +596,7 @@ function getCallPropertyDetails(
 	const d = baseDebugger.extend('getCallPropertyDetails');
 
 	// match most simple types
-	if (
-		ts.isCallExpression(property.initializer) &&
-		ts.isPropertyAccessExpression(property.initializer.expression)
-	) {
+	if (isCallExpressionWithPropertyAccess(property.initializer)) {
 		d('is CallExpression with PropertyAccessExpression');
 		const argDetails = getCallExpressionArgs(property.initializer);
 		if (argDetails) {

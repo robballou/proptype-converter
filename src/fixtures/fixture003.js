@@ -1,8 +1,8 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 
-function MyComponent({ className }) {
-	return <div className={className}></div>;
+function MyComponent({ custom }) {
+	return <div></div>;
 }
 
 MyComponent.propTypes = {

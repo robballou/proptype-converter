@@ -182,15 +182,42 @@ test('fixture 009: function expression defaultProps', async () => {
 
 test('fixture 010: function expression defaultProps', async () => {
 	const fixturePath = path.resolve(__dirname, './fixtures/fixture010.js');
-	const fixtureData = fs.readFile(fixturePath, 'utf-8');
 	const result = await processFile(fixturePath);
 	expect(result).not.toBe(null);
 	expect(result!.has('MyComponent')).toBe(true);
 
 	const component = result!.get('MyComponent')!;
-	const types = createTypesForComponents(result!);
-	const props = createPropsForComponent(component);
 
 	expect(createTypesForComponents(result!)).toMatchSnapshot();
 	expect(createPropsForComponent(component)).toMatchSnapshot();
+});
+
+test('fixture 011: component arguments contain a prop not in propTypes/defaultProps', async () => {
+	const fixturePath = path.resolve(__dirname, './fixtures/fixture011.js');
+	const result = await processFile(fixturePath, {
+		includeUnknownFunctionArgumentProps: true,
+	});
+	expect(result).not.toBe(null);
+	expect(result!.has('MyComponent')).toBe(true);
+
+	const component = result!.get('MyComponent')!;
+	expect(component.notMappedProperties.has('notInPropTypes')).toBe(true);
+	expect(component.notMappedProperties.has('anotherWithDefault')).toBe(true);
+	const props = createPropsForComponent(component);
+	expect(props).toContain('notInPropTypes');
+});
+
+test('fixture 012: arrow component arguments contain a prop not in propTypes/defaultProps', async () => {
+	const fixturePath = path.resolve(__dirname, './fixtures/fixture012.js');
+	const result = await processFile(fixturePath, {
+		includeUnknownFunctionArgumentProps: true,
+	});
+	expect(result).not.toBe(null);
+	expect(result!.has('MyComponent')).toBe(true);
+
+	const component = result!.get('MyComponent')!;
+	expect(component.notMappedProperties.has('notInPropTypes')).toBe(true);
+	expect(component.notMappedProperties.has('anotherWithDefault')).toBe(true);
+	const props = createPropsForComponent(component);
+	expect(props).toContain('notInPropTypes');
 });
