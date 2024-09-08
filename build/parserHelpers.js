@@ -22,27 +22,24 @@ var __importStar = (this && this.__importStar) || function (mod) {
     __setModuleDefault(result, mod);
     return result;
 };
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.processFile = processFile;
-const fs_1 = require("fs");
-const main_1 = require("./main");
+exports.isExpressionWithName = isExpressionWithName;
+exports.isCallExpressionWithPropertyAccess = isCallExpressionWithPropertyAccess;
+exports.isArrowFunction = isArrowFunction;
 const ts = __importStar(require("typescript"));
-const debug_1 = __importDefault(require("debug"));
-const baseDebugger = (0, debug_1.default)('proptype-converter:file');
-/**
- * Parse a TS/JS file for PropTypes
- */
-async function processFile(fileName, options = {}) {
-    const d = baseDebugger.extend('processFile');
-    d('reading file');
-    const sourceFile = ts.createSourceFile(fileName, (0, fs_1.readFileSync)(fileName).toString(), ts.ScriptTarget.ES2015, true, ts.ScriptKind.JSX);
-    d('file read', { wasSuccessful: Boolean(sourceFile) });
-    if (!sourceFile) {
-        console.error('No sourceFile');
-        return null;
-    }
-    return await (0, main_1.processSourceFile)(sourceFile, options);
+/** Predicate function to determine if a node like `MyComponent.propTypes` exists */
+function isExpressionWithName(node, name) {
+    return (ts.isExpressionStatement(node) &&
+        ts.isBinaryExpression(node.expression) &&
+        ts.isPropertyAccessExpression(node.expression.left) &&
+        node.expression.left.name.getText() === name);
+}
+/** Predicate function to determine if a node is a call expression with property access */
+function isCallExpressionWithPropertyAccess(node) {
+    return (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression));
+}
+function isArrowFunction(node) {
+    return Boolean(ts.isVariableDeclaration(node) &&
+        node.initializer &&
+        ts.isArrowFunction(node.initializer));
 }

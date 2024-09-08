@@ -8,6 +8,11 @@ exports.indentLines = indentLines;
 exports.getIndentLevel = getIndentLevel;
 const debug_1 = __importDefault(require("debug"));
 const baseDebugger = (0, debug_1.default)('proptype-converter:lines');
+/**
+ * Add a trailing semicolon where needed
+ *
+ * Also accounts for end-of-line-comments
+ */
 function semiColonLine(line) {
     if (line.includes('// ')) {
         const [lineWithoutComment, comment] = line.split('//');
@@ -21,6 +26,7 @@ function semiColonLine(line) {
     }
     return line;
 }
+/** Indent the lines recursively */
 function indentLines(lines, indentLevel = 1) {
     const d = baseDebugger.extend('indentLines');
     return lines.map((line) => {
@@ -61,6 +67,9 @@ function indentLines(lines, indentLevel = 1) {
         return semiColonLine(line);
     });
 }
+/**
+ * Figure out the indent level of the line
+ */
 function getIndentLevel(line) {
     let count = 0;
     for (const character of line) {

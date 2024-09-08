@@ -2,6 +2,13 @@
 
 All notable changes to the "vscode-pt-converter" extension will be documented in this file.
 
+## [v1.9.0]
+
+- Add support for finding unknown props that appear only in a component's function arguments. There are times where components will
+  have props specified and used in their arguments that were not properly setup in the `propTypes`. You can now optionally include
+	those when processing files via the new `includeUnknownFunctionArgumentProps` option. These show up in the props information.
+- Some refactoring and code documentation.
+
 ## [v1.8.0]
 
 - Fix some indent issues
