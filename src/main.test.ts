@@ -1,5 +1,9 @@
 import { expect, test } from 'vitest';
-import { createPropsForComponent, createTypesForComponents } from './main';
+import {
+	createPropsForComponent,
+	createTypeForComponent,
+	createTypesForComponents,
+} from './main';
 import { processFile } from './file';
 import path from 'path';
 import fs from 'fs/promises';
@@ -205,6 +209,11 @@ test('fixture 011: component arguments contain a prop not in propTypes/defaultPr
 	expect(component.notMappedProperties.has('anotherWithDefault')).toBe(true);
 	const props = createPropsForComponent(component);
 	expect(props).toContain('notInPropTypes');
+	const typeDefinition = createTypeForComponent('MyComponent', component);
+	expect(typeDefinition).toContain('notInPropTypes');
+
+	expect(createTypesForComponents(result!)).toMatchSnapshot();
+	expect(createPropsForComponent(component)).toMatchSnapshot();
 });
 
 test('fixture 012: arrow component arguments contain a prop not in propTypes/defaultProps', async () => {
@@ -220,4 +229,7 @@ test('fixture 012: arrow component arguments contain a prop not in propTypes/def
 	expect(component.notMappedProperties.has('anotherWithDefault')).toBe(true);
 	const props = createPropsForComponent(component);
 	expect(props).toContain('notInPropTypes');
+
+	expect(createTypesForComponents(result!)).toMatchSnapshot();
+	expect(createPropsForComponent(component)).toMatchSnapshot();
 });

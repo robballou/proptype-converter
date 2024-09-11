@@ -107,3 +107,31 @@ exports[`fixture 010: function expression defaultProps 1`] = `
 `;
 
 exports[`fixture 010: function expression defaultProps 2`] = `"{ className, item, onDrag = () => { }, }"`;
+
+exports[`fixture 011: component arguments contain a prop not in propTypes/defaultProps 1`] = `
+[
+  "type MyComponentProps = {
+	className: string;
+	optional?: string;
+	optionalFlag?: boolean;
+	notInPropTypes: unknown; // Could not process this property
+	anotherWithDefault: unknown; // Could not process this property
+}",
+]
+`;
+
+exports[`fixture 011: component arguments contain a prop not in propTypes/defaultProps 2`] = `"{ anotherWithDefault, className, notInPropTypes, optional = 'default', optionalFlag = true, }"`;
+
+exports[`fixture 012: arrow component arguments contain a prop not in propTypes/defaultProps 1`] = `
+[
+  "type MyComponentProps = {
+	className: string;
+	optional?: string;
+	optionalFlag?: boolean;
+	notInPropTypes: unknown; // Could not process this property
+	anotherWithDefault: unknown; // Could not process this property
+}",
+]
+`;
+
+exports[`fixture 012: arrow component arguments contain a prop not in propTypes/defaultProps 2`] = `"{ anotherWithDefault, className, notInPropTypes, optional = 'default', optionalFlag = true, }"`;
