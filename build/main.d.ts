@@ -3,10 +3,7 @@ import * as ts from 'typescript';
 type Position = [number, number];
 export type ComponentPropTypes = {
     /** Properties that were parsed and have a TypeScript type */
-    mappedProperties: Map<string, {
-        tsType: string;
-        required: boolean;
-    }>;
+    mappedProperties: Map<string, PropertyDetail>;
     /** Properties that were not parsed and we don't know what they are... */
     notMappedProperties: Map<string, string>;
     /** Position of the entire `propTypes` definition */
@@ -36,6 +33,11 @@ type ProcessSourceFileOptions = {
  * details.
  */
 export declare function processSourceFile(sourceFile: ts.SourceFile, options?: Partial<ProcessSourceFileOptions>): Map<string, ComponentPropTypes>;
+type PropertyDetail = {
+    tsType: string | null;
+    comment: string | null;
+    required: boolean;
+};
 export declare function createTypeForComponent(name: string, component: ComponentPropTypes): string;
 /** Create a props based on mapped types and default props (if available) */
 export declare function createPropsForComponent(component: ComponentPropTypes): string | null;

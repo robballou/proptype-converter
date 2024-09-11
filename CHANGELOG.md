@@ -2,6 +2,10 @@
 
 All notable changes to the "vscode-pt-converter" extension will be documented in this file.
 
+## [v1.10.0]
+
+- Add support for PropTypes with JSDocs. These will now be included when generating the TypeScript types.
+
 ## [v1.9.0]
 
 - Add support for finding unknown props that appear only in a component's function arguments. There are times where components will

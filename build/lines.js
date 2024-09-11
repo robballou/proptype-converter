@@ -14,6 +14,9 @@ const baseDebugger = (0, debug_1.default)('proptype-converter:lines');
  * Also accounts for end-of-line-comments
  */
 function semiColonLine(line) {
+    if (line.trimStart().startsWith('/**') || line.trimEnd().endsWith('*/')) {
+        return line;
+    }
     if (line.includes('// ')) {
         const [lineWithoutComment, comment] = line.split('//');
         if (!lineWithoutComment.trim().endsWith(';')) {
@@ -61,10 +64,15 @@ function indentLines(lines, indentLevel = 1) {
                     return modifiedLine;
                 });
             }
+            else {
+                return expandedLine
+                    .map((eLine) => `\t`.repeat(indentLevel) + trimStartTabs(eLine))
+                    .join('\n');
+            }
             return expandedLine.join('\n');
         }
         d('single line', line);
-        return semiColonLine(line);
+        return semiColonLine(`\t`.repeat(indentLevel) + trimStartTabs(line));
     });
 }
 /**
@@ -81,4 +89,7 @@ function getIndentLevel(line) {
         }
     }
     return count;
+}
+function trimStartTabs(str) {
+    return str.replace(/^\t+/, '');
 }

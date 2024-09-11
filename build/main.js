@@ -247,6 +247,7 @@ function processPropTypeProperties(properties) {
         }
         let tsType = null;
         let required = false;
+        let comment = null;
         if (ts.isPropertyAssignment(property)) {
             // check if this is a simple PropType that we can match via
             // a simple regex rather than parsing.
@@ -254,13 +255,14 @@ function processPropTypeProperties(properties) {
             if (result.status === 'success') {
                 tsType = result.tsType;
                 required = result.required;
+                comment = result.comment;
             }
             else {
                 // could not match property
             }
         }
         if (tsType) {
-            mappedProperties.set(name, { tsType, required });
+            mappedProperties.set(name, { tsType, required, comment });
         }
         else {
             notMappedProperties.set(name, property.getFullText());
@@ -292,7 +294,7 @@ function getPropertyDetails(property) {
 /**
  * Convert a `oneOf` PropType to its correlated Type.
  */
-function createOneOfType(args, required = false) {
+function createOneOfType(args, required = false, comments = []) {
     const d = baseDebugger.extend('createOneOfType');
     if (!args) {
         d('no args, not matched');
@@ -305,6 +307,7 @@ function createOneOfType(args, required = false) {
         return {
             status: 'success',
             tsType: `${args.args.join(' | ')}`,
+            comment: comments.length > 0 ? comments[0] : null,
             required,
         };
     }
@@ -317,7 +320,7 @@ function createOneOfType(args, required = false) {
 /**
  * Convert a `shape` PropType to its correlated Type.
  */
-function createShapeType(shape, required = false) {
+function createShapeType(shape, required = false, comments = []) {
     const d = baseDebugger.extend('createShapeType');
     if (!shape) {
         d('no args');
@@ -342,6 +345,7 @@ function createShapeType(shape, required = false) {
     return {
         status: 'success',
         tsType: typeText.join('\n'),
+        comment: comments.length > 0 ? comments[0] : null,
         required,
     };
 }
@@ -438,6 +442,7 @@ function getCallExpressionArgs(node) {
 }
 function getCallPropertyDetails(property) {
     const d = baseDebugger.extend('getCallPropertyDetails');
+    const comments = getNodeJSDocComments(property);
     // match most simple types
     if ((0, parserHelpers_1.isCallExpressionWithPropertyAccess)(property.initializer)) {
         d('is CallExpression with PropertyAccessExpression');
@@ -446,12 +451,12 @@ function getCallPropertyDetails(property) {
             const { callType, args } = argDetails;
             d('found callType', callType);
             if (callType === 'oneOf') {
-                const result = createOneOfType(argDetails);
+                const result = createOneOfType(argDetails, false, comments);
                 d('oneOf result', result);
                 return result;
             }
             else if (callType === 'shape') {
-                return createShapeType(argDetails);
+                return createShapeType(argDetails, false, comments);
             }
             else if (callType === 'arrayOf') {
                 const types = args.map((arg) => {
@@ -462,7 +467,7 @@ function getCallPropertyDetails(property) {
                         arg &&
                         'callType' in arg &&
                         arg?.callType === 'shape') {
-                        const result = createShapeType(arg);
+                        const result = createShapeType(arg, false, comments);
                         return result.status === 'success' ? result.tsType : null;
                     }
                     return null;
@@ -470,6 +475,7 @@ function getCallPropertyDetails(property) {
                 return {
                     status: 'success',
                     tsType: `${types.join(' ')}[]`,
+                    comment: comments.length > 0 ? comments[0] : null,
                     required: false,
                 };
             }
@@ -478,6 +484,7 @@ function getCallPropertyDetails(property) {
                 return {
                     status: 'success',
                     tsType: Array.isArray(args) ? args.join(' | ') : args,
+                    comment: comments.length > 0 ? comments[0] : null,
                     required: false,
                 };
             }
@@ -494,13 +501,14 @@ function getCallPropertyDetails(property) {
         const result = getCallExpressionArgs(property.initializer.expression);
         const args = result ? result.args : [];
         if (callType === 'oneOf') {
-            return createOneOfType({ callType, args }, property.initializer.name.getText() === 'isRequired');
+            return createOneOfType({ callType, args }, property.initializer.name.getText() === 'isRequired', comments);
         }
         else if (callType === 'shape') {
             d('Found shape', { args });
             return {
                 status: 'success',
                 tsType: `{\n${args.map((arg) => `\t${arg}`).join('\n')}\n}`,
+                comment: comments.length > 0 ? comments[0] : null,
                 required: property.initializer.name.getText() === 'isRequired',
             };
         }
@@ -519,6 +527,7 @@ function getSimplePropertyDetails(property, indentLevel = 0) {
     const d = baseDebugger.extend('getSimplePropertyDetails');
     // glance at the type and see if it is a common/simple thing we can convert without much hassle:
     const propertyText = property.initializer.getText().trim();
+    const comments = getNodeJSDocComments(property);
     d('testing property for simple PropType match', propertyText);
     if (simplePropType.test(propertyText)) {
         const result = simplePropType.exec(propertyText);
@@ -530,6 +539,7 @@ function getSimplePropertyDetails(property, indentLevel = 0) {
         return {
             status: 'success',
             tsType,
+            comment: comments.length > 0 ? comments[0] : null,
             required,
         };
     }
@@ -537,6 +547,30 @@ function getSimplePropertyDetails(property, indentLevel = 0) {
         status: 'notMatched',
         propertyText: property.getText(),
     };
+}
+/**
+ * Try to get JSDocs from a node
+ */
+function getNodeJSDocComments(node) {
+    const d = baseDebugger.extend('getNodeJSDocComments');
+    const sf = node.getSourceFile();
+    const fullPosition = [node.getFullStart(), node.getEnd()];
+    const result = ts.getLeadingCommentRanges(sf.text, fullPosition[0]);
+    const comments = [];
+    if (result) {
+        result.forEach((r) => {
+            const comment = sf.text.substring(r.pos, r.end);
+            const commentLines = comment.split(/\n/).map((line) => {
+                if (line.startsWith('\t')) {
+                    return line.replace(/^\t*/, '');
+                }
+                return line;
+            });
+            comments.push(commentLines.join('\n'));
+        });
+    }
+    d('Found comments', comments);
+    return comments;
 }
 function mapPropTypeTypeToTSType(propTypeType) {
     switch (propTypeType) {
@@ -558,14 +592,23 @@ function createTypeForComponent(name, component) {
     const lines = [`type ${propsTypeName} = {`];
     const allProperties = new Map();
     component.mappedProperties.forEach((property, name) => {
-        allProperties.set(`${name}${!property.required ? '?' : ''}`, typeToString(property));
+        allProperties.set(`${name}${!property.required ? '?' : ''}`, {
+            typeString: typeToString(property),
+            comment: property.comment,
+        });
     });
     component.notMappedProperties.forEach((property, name) => {
-        allProperties.set(name, ['unknown; // Could not process this property']);
+        allProperties.set(name, {
+            typeString: ['unknown; // Could not process this property'],
+            comment: null,
+        });
     });
     allProperties.forEach((propertyLines, name) => {
-        const indentedPropertyLines = (0, lines_1.indentLines)(propertyLines);
-        lines.push(`\t${name}: ${indentedPropertyLines.join('\n')}`);
+        const indentedPropertyLines = (0, lines_1.indentLines)(propertyLines.typeString);
+        if (propertyLines.comment) {
+            lines.push((0, lines_1.indentLines)([propertyLines.comment]).join('\n'));
+        }
+        lines.push(`\t${name}: ${indentedPropertyLines.join('\n').trimStart()}`);
     });
     lines.push('}');
     return lines.join('\n');
@@ -597,5 +640,6 @@ function createTypesForComponents(components) {
     });
 }
 function typeToString({ tsType }) {
-    return [`${tsType};`];
+    const lines = [`${tsType};`];
+    return lines;
 }
