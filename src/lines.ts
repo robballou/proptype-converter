@@ -7,6 +7,9 @@ const baseDebugger = createDebugger('proptype-converter:lines');
  * Also accounts for end-of-line-comments
  */
 export function semiColonLine(line: string) {
+	if (line.trimStart().startsWith('/**') || line.trimEnd().endsWith('*/')) {
+		return line;
+	}
 	if (line.includes('// ')) {
 		const [lineWithoutComment, comment] = line.split('//');
 		if (!lineWithoutComment.trim().endsWith(';')) {
@@ -68,12 +71,16 @@ export function indentLines(lines: string[], indentLevel = 1): string[] {
 					}
 					return modifiedLine;
 				});
+			} else {
+				return expandedLine
+					.map((eLine) => `\t`.repeat(indentLevel) + trimStartTabs(eLine))
+					.join('\n');
 			}
 			return expandedLine.join('\n');
 		}
 
 		d('single line', line);
-		return semiColonLine(line);
+		return semiColonLine(`\t`.repeat(indentLevel) + trimStartTabs(line));
 	});
 }
 
@@ -90,4 +97,8 @@ export function getIndentLevel(line: string) {
 		}
 	}
 	return count;
+}
+
+function trimStartTabs(str: string) {
+	return str.replace(/^\t+/, '');
 }

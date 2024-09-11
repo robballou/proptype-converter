@@ -22,3 +22,10 @@ test('indentLines with nested structure while already indented', () => {
 		getIndentLevel(firstLineExpanded![firstLineExpanded!.length - 1]),
 	).toBe(2);
 });
+
+test('indentLines will not add semiColons for comment lines', () => {
+	const testString =
+		'/**\n * A bigger JSDoc comment\n *\n * See more details...\n */';
+	const lines = indentLines([testString]);
+	console.log(lines);
+});

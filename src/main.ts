@@ -19,7 +19,7 @@ type Position = [number, number];
 
 export type ComponentPropTypes = {
 	/** Properties that were parsed and have a TypeScript type */
-	mappedProperties: Map<string, { tsType: string; required: boolean }>;
+	mappedProperties: Map<string, PropertyDetail>;
 	/** Properties that were not parsed and we don't know what they are... */
 	notMappedProperties: Map<string, string>;
 	/** Position of the entire `propTypes` definition */
@@ -358,8 +358,9 @@ function processFirstArgumentForPropArguments(
 function processPropTypeProperties(
 	properties: ts.NodeArray<ts.ObjectLiteralElementLike>,
 ) {
-	const mappedProperties = new Map();
-	const notMappedProperties = new Map();
+	const mappedProperties: ComponentPropTypes['mappedProperties'] = new Map();
+	const notMappedProperties: ComponentPropTypes['notMappedProperties'] =
+		new Map();
 	properties.forEach((property) => {
 		const name = property.name?.getText();
 		if (!name) {
@@ -367,6 +368,7 @@ function processPropTypeProperties(
 		}
 		let tsType = null;
 		let required = false;
+		let comment = null;
 		if (ts.isPropertyAssignment(property)) {
 			// check if this is a simple PropType that we can match via
 			// a simple regex rather than parsing.
@@ -374,13 +376,14 @@ function processPropTypeProperties(
 			if (result.status === 'success') {
 				tsType = result.tsType;
 				required = result.required;
+				comment = result.comment;
 			} else {
 				// could not match property
 			}
 		}
 
 		if (tsType) {
-			mappedProperties.set(name, { tsType, required });
+			mappedProperties.set(name, { tsType, required, comment });
 		} else {
 			notMappedProperties.set(name, property.getFullText());
 		}
@@ -388,12 +391,16 @@ function processPropTypeProperties(
 	return { mappedProperties, notMappedProperties };
 }
 
+type PropertyDetail = {
+	tsType: string | null;
+	comment: string | null;
+	required: boolean;
+};
+
 type PropertyDetailsResult =
-	| {
+	| (PropertyDetail & {
 			status: 'success';
-			tsType: string | null;
-			required: boolean;
-	  }
+	  })
 	| { status: 'notMatched'; propertyText: string };
 
 /**
@@ -429,6 +436,7 @@ function getPropertyDetails(
 function createOneOfType(
 	args: ReturnType<typeof getCallExpressionArgs>,
 	required = false,
+	comments: string[] = [],
 ): PropertyDetailsResult {
 	const d = baseDebugger.extend('createOneOfType');
 	if (!args) {
@@ -443,6 +451,7 @@ function createOneOfType(
 		return {
 			status: 'success',
 			tsType: `${args.args.join(' | ')}`,
+			comment: comments.length > 0 ? comments[0] : null,
 			required,
 		};
 	}
@@ -460,6 +469,7 @@ function createOneOfType(
 function createShapeType(
 	shape: ReturnType<typeof getCallExpressionArgs>,
 	required = false,
+	comments: string[] = [],
 ): PropertyDetailsResult {
 	const d = baseDebugger.extend('createShapeType');
 	if (!shape) {
@@ -486,6 +496,7 @@ function createShapeType(
 	return {
 		status: 'success',
 		tsType: typeText.join('\n'),
+		comment: comments.length > 0 ? comments[0] : null,
 		required,
 	};
 }
@@ -594,7 +605,7 @@ function getCallPropertyDetails(
 	property: ts.PropertyAssignment,
 ): PropertyDetailsResult {
 	const d = baseDebugger.extend('getCallPropertyDetails');
-
+	const comments = getNodeJSDocComments(property);
 	// match most simple types
 	if (isCallExpressionWithPropertyAccess(property.initializer)) {
 		d('is CallExpression with PropertyAccessExpression');
@@ -603,11 +614,11 @@ function getCallPropertyDetails(
 			const { callType, args } = argDetails;
 			d('found callType', callType);
 			if (callType === 'oneOf') {
-				const result = createOneOfType(argDetails);
+				const result = createOneOfType(argDetails, false, comments);
 				d('oneOf result', result);
 				return result;
 			} else if (callType === 'shape') {
-				return createShapeType(argDetails);
+				return createShapeType(argDetails, false, comments);
 			} else if (callType === 'arrayOf') {
 				const types = args.map((arg) => {
 					if (typeof arg === 'string') {
@@ -619,7 +630,7 @@ function getCallPropertyDetails(
 						'callType' in arg &&
 						arg?.callType === 'shape'
 					) {
-						const result = createShapeType(arg);
+						const result = createShapeType(arg, false, comments);
 						return result.status === 'success' ? result.tsType : null;
 					}
 					return null;
@@ -627,6 +638,7 @@ function getCallPropertyDetails(
 				return {
 					status: 'success',
 					tsType: `${types.join(' ')}[]`,
+					comment: comments.length > 0 ? comments[0] : null,
 					required: false,
 				};
 			} else if (callType === 'instanceOf') {
@@ -634,6 +646,7 @@ function getCallPropertyDetails(
 				return {
 					status: 'success',
 					tsType: Array.isArray(args) ? args.join(' | ') : args,
+					comment: comments.length > 0 ? comments[0] : null,
 					required: false,
 				};
 			}
@@ -654,12 +667,14 @@ function getCallPropertyDetails(
 			return createOneOfType(
 				{ callType, args },
 				property.initializer.name.getText() === 'isRequired',
+				comments,
 			);
 		} else if (callType === 'shape') {
 			d('Found shape', { args });
 			return {
 				status: 'success',
 				tsType: `{\n${args.map((arg) => `\t${arg}`).join('\n')}\n}`,
+				comment: comments.length > 0 ? comments[0] : null,
 				required: property.initializer.name.getText() === 'isRequired',
 			};
 		}
@@ -682,6 +697,8 @@ function getSimplePropertyDetails(
 	const d = baseDebugger.extend('getSimplePropertyDetails');
 	// glance at the type and see if it is a common/simple thing we can convert without much hassle:
 	const propertyText = property.initializer.getText().trim();
+	const comments = getNodeJSDocComments(property);
+
 	d('testing property for simple PropType match', propertyText);
 	if (simplePropType.test(propertyText)) {
 		const result = simplePropType.exec(propertyText);
@@ -693,6 +710,7 @@ function getSimplePropertyDetails(
 		return {
 			status: 'success',
 			tsType,
+			comment: comments.length > 0 ? comments[0] : null,
 			required,
 		};
 	}
@@ -700,6 +718,32 @@ function getSimplePropertyDetails(
 		status: 'notMatched',
 		propertyText: property.getText(),
 	};
+}
+
+/**
+ * Try to get JSDocs from a node
+ */
+function getNodeJSDocComments(node: ts.Node) {
+	const d = baseDebugger.extend('getNodeJSDocComments');
+	const sf = node.getSourceFile();
+	const fullPosition = [node.getFullStart(), node.getEnd()];
+	const result = ts.getLeadingCommentRanges(sf.text, fullPosition[0]);
+	const comments: string[] = [];
+	if (result) {
+		result.forEach((r) => {
+			const comment = sf.text.substring(r.pos, r.end);
+			const commentLines = comment.split(/\n/).map((line) => {
+				if (line.startsWith('\t')) {
+					return line.replace(/^\t*/, '');
+				}
+				return line;
+			});
+
+			comments.push(commentLines.join('\n'));
+		});
+	}
+	d('Found comments', comments);
+	return comments;
 }
 
 function mapPropTypeTypeToTSType(propTypeType: string) {
@@ -725,22 +769,31 @@ export function createTypeForComponent(
 	const propsTypeName = `${name}Props`;
 	const lines = [`type ${propsTypeName} = {`];
 
-	const allProperties = new Map<string, string[]>();
+	const allProperties = new Map<
+		string,
+		{ typeString: string[]; comment: string | null }
+	>();
 
 	component.mappedProperties.forEach((property, name) => {
-		allProperties.set(
-			`${name}${!property.required ? '?' : ''}`,
-			typeToString(property),
-		);
+		allProperties.set(`${name}${!property.required ? '?' : ''}`, {
+			typeString: typeToString(property),
+			comment: property.comment,
+		});
 	});
 
 	component.notMappedProperties.forEach((property, name) => {
-		allProperties.set(name, ['unknown; // Could not process this property']);
+		allProperties.set(name, {
+			typeString: ['unknown; // Could not process this property'],
+			comment: null,
+		});
 	});
 
 	allProperties.forEach((propertyLines, name) => {
-		const indentedPropertyLines = indentLines(propertyLines);
-		lines.push(`\t${name}: ${indentedPropertyLines.join('\n')}`);
+		const indentedPropertyLines = indentLines(propertyLines.typeString);
+		if (propertyLines.comment) {
+			lines.push(indentLines([propertyLines.comment]).join('\n'));
+		}
+		lines.push(`\t${name}: ${indentedPropertyLines.join('\n').trimStart()}`);
 	});
 
 	lines.push('}');
@@ -787,6 +840,7 @@ export function createTypesForComponents(
 	});
 }
 
-function typeToString({ tsType }: { tsType: string }) {
-	return [`${tsType};`];
+function typeToString({ tsType }: PropertyDetail) {
+	const lines: string[] = [`${tsType};`];
+	return lines;
 }

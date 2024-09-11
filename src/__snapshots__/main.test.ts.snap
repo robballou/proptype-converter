@@ -135,3 +135,21 @@ exports[`fixture 012: arrow component arguments contain a prop not in propTypes/
 `;
 
 exports[`fixture 012: arrow component arguments contain a prop not in propTypes/defaultProps 2`] = `"{ anotherWithDefault, className, notInPropTypes, optional = 'default', optionalFlag = true, }"`;
+
+exports[`fixture 013: defaultProps 1`] = `
+[
+  "type MyComponentProps = {
+	/** JSDoc we want to keep */
+	className: string;
+	/**
+	 * A bigger JSDoc comment
+	 *
+	 * See more details...
+	 */
+	optional?: string;
+	optionalFlag?: boolean;
+}",
+]
+`;
+
+exports[`fixture 013: defaultProps 2`] = `"{ className, optional = 'default', optionalFlag = true, }"`;
